@@ -19,7 +19,7 @@ judged equally on novelty, quality/generality, relevance, verifiability and clar
 | B | Seeded-fault benchmark for patch verifiers | Best New Resource | Low to medium |
 | C | Ablation of the code-graph tools on agent success | Best Paper | High |
 
-**Decision:** pending.
+**Decision (2026-10-15):** all three combined. C is the main study, A is its tooling, B checks the verifiers. See [design.md](design.md).
 
 ## Paper outline (fixed by the rules)
 
@@ -33,7 +33,9 @@ Optional: a public Kaggle notebook and an arXiv-style PDF.
 
 ## Open items
 
-- [ ] Choose the direction
+- [x] Choose the direction
 - [ ] Accept the rules on both Kaggle competitions
 - [ ] Set up the Kaggle API locally; pull the dataset and `HARNESS_README.md`
-- [ ] Write the design doc for the chosen direction
+- [x] Write the design doc for the chosen direction
+- [ ] Get a Gemini API key and check Gemma 4 rate limits
+- [ ] Test the QAT model in a Kaggle GPU notebook
