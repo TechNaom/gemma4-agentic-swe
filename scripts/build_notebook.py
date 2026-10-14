@@ -14,9 +14,17 @@ CELLS = [
     ("code", """import glob, os, subprocess, sys
 from pathlib import Path
 
-def sh(cmd):
-    print('$', cmd, flush=True)
-    subprocess.run(cmd, shell=True, check=True)
+LOG = '/kaggle/working/notebook.log'
+
+def sh(cmd, check=True):
+    # Tee output to notebook.log: Kaggle's API log is often empty.
+    with open(LOG, 'a') as log:
+        log.write(f'$ {cmd}\\n')
+        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        log.write(p.stdout + f'[exit {p.returncode}]\\n')
+    print('$', cmd, '\\n', p.stdout[-3000:], flush=True)
+    if check and p.returncode:
+        raise RuntimeError(f'exit {p.returncode}: {cmd}')
 
 sh('git clone -q --depth 1 https://github.com/TechNaom/gemma4-agentic-swe /kaggle/working/repo')
 os.chdir('/kaggle/working/repo')
@@ -43,8 +51,9 @@ sh(f'python -m g4swe.run_eval --mode empty --data-dir {DATA_DIR}')""")] if MODE 
     from kaggle_secrets import UserSecretsClient
     os.environ['GEMINI_API_KEY'] = UserSecretsClient().get_secret('GEMINI_API_KEY')
 except Exception as e:
-    raise SystemExit(f'GEMINI_API_KEY secret not available: {e}')
-sh(f'python -m g4swe.run_eval --mode agent --agent agents/k0 --data-dir {DATA_DIR} --task-ids rich_2725')"""),
+    open(LOG, 'a').write(f'GEMINI_API_KEY secret not available: {e!r}\\n')
+    print('GEMINI_API_KEY secret not available:', repr(e))
+sh(f'python -m g4swe.run_eval --mode agent --agent agents/k0 --data-dir {DATA_DIR} --task-ids rich_2725', check=False)"""),
     ("code", """import json
 sh('tar czf /kaggle/working/results.tgz results')
 for f in sorted(glob.glob('results/*/runs.jsonl')):
