@@ -5,7 +5,7 @@ from pathlib import Path
 CELLS = [
     ("markdown", "# Smoke test: swegemma harness + hosted Gemma 4\n\n"
      "1. Install the official harness from `metric/gemma-4-developer-agent-wheelhouse`.\n"
-     "2. **Sandbox check**: the reference patch must resolve; an empty patch must not.\n"
+     "2. **Sandbox audit** on all 129 tasks: the reference patch must resolve; an empty patch must not.\n"
      "3. One agent run (config k0) with `gemma-4-31b-it` via the Gemini API, if the `GEMINI_API_KEY` secret is attached.\n\n"
      "Code: https://github.com/TechNaom/gemma4-agentic-swe"),
     ("code", """import glob, os, subprocess, sys
@@ -32,9 +32,9 @@ harness = [str(w) for w in WHEELHOUSE.glob('*.whl') if w.name.split('-')[0] in (
 sh('pip install -q --no-deps ' + ' '.join(harness))
 os.environ['PYTHONPATH'] = 'src'"""),
     ("markdown", "## Sandbox check"),
-    ("code", """TASKS = 'fastapi_15661 requests_7505'
-sh(f'python -m g4swe.run_eval --mode gold  --data-dir {DATA_DIR} --task-ids {TASKS}')
-sh(f'python -m g4swe.run_eval --mode empty --data-dir {DATA_DIR} --task-ids {TASKS}')"""),
+    ("code", """# Every task: the reference patch should resolve, an empty patch should not.
+sh(f'python -m g4swe.run_eval --mode gold  --data-dir {DATA_DIR}')
+sh(f'python -m g4swe.run_eval --mode empty --data-dir {DATA_DIR}')"""),
     ("markdown", "## One agent run (k0, Gemma 4 31B via Gemini API)"),
     ("code", """try:
     from kaggle_secrets import UserSecretsClient
@@ -44,7 +44,7 @@ except Exception as e:
 if os.environ.get('GEMINI_API_KEY'):
     sh(f'python -m g4swe.run_eval --mode agent --agent agents/k0 --data-dir {DATA_DIR} --task-ids requests_7505')"""),
     ("code", """sh('tar czf /kaggle/working/results.tgz results')
-sh('cat results/*/runs.jsonl')"""),
+sh('for f in results/*/runs.jsonl; do echo $f; python -c "import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; print(sum(x['resolved'] for x in r), '/', len(r))" $f; done')"""),
 ]
 
 
