@@ -154,6 +154,10 @@ async def run(args) -> list[RunRecord]:
             error=r.error,
         )
         records.append(rec)
+        for sub, text in (("test_outputs", r.test_output), ("patches", r.agent_patch)):
+            (results_dir / sub).mkdir(exist_ok=True)
+            ext = "log" if sub == "test_outputs" else "patch"
+            (results_dir / sub / f"{task.instance_id}.{ext}").write_text(text or "", encoding="utf-8")
         print(f"    resolved={rec.resolved} exit={rec.test_exit_code} tools={rec.tool_calls} "
               f"{rec.duration_seconds}s err={(rec.error or '')[:120]}", flush=True)
         with open(results_dir / "runs.jsonl", "a", encoding="utf-8") as f:
