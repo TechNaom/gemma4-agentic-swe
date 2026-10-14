@@ -2,6 +2,8 @@
 
 **Open research on making a single-accelerator open model a reliable software-engineering agent.**
 
+By **Manohar Papasani** ([@TechNaom](https://github.com/TechNaom)), GenAI Solution Architect.
+
 This repo is our entry for Google DeepMind's
 [Gemma 4 Developer Agent Paper Track](https://www.kaggle.com/competitions/gemma-4-developer-agent-paper)
 on Kaggle. It may also feed the companion
