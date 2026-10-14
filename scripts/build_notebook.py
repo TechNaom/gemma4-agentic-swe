@@ -1,6 +1,9 @@
 """Build notebooks/smoke/smoke.ipynb: sandbox check (gold/empty) + one agent run on Kaggle."""
 import json
+import sys
 from pathlib import Path
+
+MODE = sys.argv[1] if len(sys.argv) > 1 else "audit"  # audit | agent
 
 CELLS = [
     ("markdown", "# Smoke test: swegemma harness + hosted Gemma 4\n\n"
@@ -31,20 +34,24 @@ sh('pip install -q "google-adk==1.36.1" litellm networkx python-dotenv cachetool
 harness = [str(w) for w in WHEELHOUSE.glob('*.whl') if w.name.split('-')[0] in ('swegemma', 'adk_submission', 'adk_eval_core')]
 sh('pip install -q --no-deps ' + ' '.join(harness))
 os.environ['PYTHONPATH'] = 'src'"""),
-    ("markdown", "## Sandbox check"),
-    ("code", """# Every task: the reference patch should resolve, an empty patch should not.
+    *([("markdown", "## Sandbox check")] if MODE == "audit" else []),
+    *([("code", """# Every task: the reference patch should resolve, an empty patch should not.
 sh(f'python -m g4swe.run_eval --mode gold  --data-dir {DATA_DIR}')
-sh(f'python -m g4swe.run_eval --mode empty --data-dir {DATA_DIR}')"""),
+sh(f'python -m g4swe.run_eval --mode empty --data-dir {DATA_DIR}')""")] if MODE == "audit" else []),
     ("markdown", "## One agent run (k0, Gemma 4 31B via Gemini API)"),
     ("code", """try:
     from kaggle_secrets import UserSecretsClient
     os.environ['GEMINI_API_KEY'] = UserSecretsClient().get_secret('GEMINI_API_KEY')
 except Exception as e:
-    print('GEMINI_API_KEY secret not attached; skipping agent run.', e)
-if os.environ.get('GEMINI_API_KEY'):
-    sh(f'python -m g4swe.run_eval --mode agent --agent agents/k0 --data-dir {DATA_DIR} --task-ids requests_7505')"""),
-    ("code", """sh('tar czf /kaggle/working/results.tgz results')
-sh('for f in results/*/runs.jsonl; do echo $f; python -c "import json,sys; r=[json.loads(l) for l in open(sys.argv[1])]; print(sum(x['resolved'] for x in r), '/', len(r))" $f; done')"""),
+    raise SystemExit(f'GEMINI_API_KEY secret not available: {e}')
+sh(f'python -m g4swe.run_eval --mode agent --agent agents/k0 --data-dir {DATA_DIR} --task-ids rich_2725')"""),
+    ("code", """import json
+sh('tar czf /kaggle/working/results.tgz results')
+for f in sorted(glob.glob('results/*/runs.jsonl')):
+    rows = [json.loads(line) for line in open(f)]
+    print(f, sum(r['resolved'] for r in rows), '/', len(rows))
+    for r in rows:
+        print('   ', r)"""),
 ]
 
 
