@@ -39,18 +39,27 @@ issues ──► agent (Gemma 4 + tool config k) ──► recorder ──► ru
 
 ### 3.2 Ablation (C)
 
-Tool configurations (final list depends on what the harness exposes; see open item O1):
+The harness (`swegemma`, see `HARNESS_README.md`) exposes 9 tools: `run_command`, `read_file`, `edit_file`,
+`write_file`, `get_status`, `submit_patch`, and three code-intelligence tools built on precomputed per-commit
+call graphs (`graphs/*.json`, NetworkX node-link) and embeddings (`embeddings/*.npz`):
+
+- `get_code_neighbors(node)`: callers and callees of a symbol
+- `search_similar_code(query)`: nearest symbols by embedding cosine similarity
+- `get_code_subgraph(nodes)`: induced call subgraph over a set of symbols
+
+Tool configurations:
 
 | Config | Tools |
 |---|---|
-| k0 | Baseline: file read, search, edit, run tests |
-| k1 | k0 + dependency / import graph |
-| k2 | k0 + call graph |
-| k3 | k0 + related-code retrieval (embeddings) |
-| k4 | k0 + all graph tools |
+| k0 | Baseline: the 6 workspace/execution tools |
+| k1 | k0 + `get_code_neighbors` |
+| k2 | k0 + `search_similar_code` |
+| k3 | k0 + `get_code_subgraph` |
+| k4 | k0 + all three graph tools |
+| k5 | k4 + read-only `code_analyzer` sub-agent (as in the starter kit) |
 
-- Pilot: 10 issues × 5 configs = 50 runs.
-- Full: 30–50 issues × 5 configs. Repeat a subset with 2–3 seeds to measure noise.
+- Pilot: 10 issues × 6 configs = 60 runs.
+- Full: 30–50 issues × 6 configs. Repeat a subset with 2–3 seeds to measure noise.
 - Metrics: resolve rate, steps to fix, tokens, first-correct-file step, tool-error rate.
 
 ### 3.3 Planted-bug benchmark (B)
@@ -82,8 +91,13 @@ The owner has a **Google AI Pro** subscription. It does not raise Gemini API lim
 
 ## 5. Issue source
 
-Preferred: issues or examples shipped with the competition dataset (O1). Fallback: a subset of SWE-bench Lite /
-Verified limited to pure-Python repos that install with `pip` in a Kaggle notebook (no Docker there).
+The competition dataset ships **129 training tasks** in `tasks.jsonl` (SWE-bench style: `instance_id`, `repo`,
+`base_commit`, `patch`, `test_patch`, `problem_statement`, `hints_text`): fastapi 67, rich 48, requests 13, httpx 1.
+Each task has a repo snapshot (`snapshots/*.tgz`, ~21 GB total) and per-commit graph + embedding files. We sample
+from these, stratified by repo. The hidden main-track test set (~120 tasks) is never used.
+
+Verification follows the harness: apply agent patch, reset test files, apply `test_patch`, run `pytest`;
+resolved iff exit code 0 and every target test passed. The gold `patch` gives correct patches to seed B.
 
 ## 6. Repository layout (planned)
 
@@ -113,9 +127,12 @@ paper/         draft, figures
 
 | ID | Item | Status |
 |---|---|---|
-| O1 | What code-graph tools the harness exposes and whether they run outside a submission (`HARNESS_README.md`) | Needs Kaggle data access |
-| O2 | Gemma 4 rate limits on the Gemini API for our project | Needs API key |
-| O3 | Does the QAT w4a16 model load in vLLM on Kaggle T4s (`--dtype float16`, Marlin)? Third-party sources say compute capability 7.5 works; not yet confirmed | Test in Kaggle notebook |
+| O1 | Code-graph tools the harness exposes | **Resolved 2026-10-15**: 3 tools, data shipped (section 3.2) |
+| O1b | The `swegemma` harness package itself is not in the downloaded data (only README, tasks, snapshots, graphs, embeddings, wheels, sample submission). Find it in the Kaggle starter notebook, or re-implement the 9 tools from the README spec | Open |
+| O2 | Gemma 4 rate limits on the Gemini API for our project | Needs API key in `.env` |
+| O3 | Does the QAT w4a16 model load in vLLM on Kaggle T4s (`--dtype float16`, Marlin)? | Test in Kaggle notebook |
+| O4 | Sandbox needs Linux (Docker or POSIX subprocess backend); the owner's laptop is Windows with no Docker/WSL distro | Run sandboxes in Kaggle notebooks (Linux, internet on for Gemini API calls) |
 | R1 | Rate limits too tight for the full matrix | Shrink to 30 issues; spread runs over days |
-| R2 | Harness graph tools unusable outside a submission | Build our own graph tools from the provided resources |
+| R2 | Harness package unavailable outside Kaggle | Our own harness re-implementing the documented tools becomes part of resource A |
 | R3 | Results noisy at this sample size | Repeat seeds on a subset; report confidence intervals |
+| R4 | Gemini API context and behaviour differ from vLLM 32k serving | Cap context at 32,768 tokens in our runner; fidelity subset on the QAT model |
