@@ -128,8 +128,9 @@ paper/         draft, figures
 | ID | Item | Status |
 |---|---|---|
 | O1 | Code-graph tools the harness exposes | **Resolved 2026-10-15**: 3 tools, data shipped (section 3.2) |
-| O1b | The `swegemma` harness package itself is not in the downloaded data (only README, tasks, snapshots, graphs, embeddings, wheels, sample submission). Find it in the Kaggle starter notebook, or re-implement the 9 tools from the README spec | Open |
-| O2 | Gemma 4 rate limits on the Gemini API for our project | Needs API key in `.env` |
+| O1b | Where the `swegemma` harness lives | **Resolved 2026-10-15**: wheel `swegemma-0.2.11` (+ `adk_submission`, `adk_eval_core`) in Kaggle dataset `metric/gemma-4-developer-agent-wheelhouse`; licence unstated, so installed at run time, not redistributed |
+| O1c | Routing harness model calls to hosted Gemma | **Resolved 2026-10-15**: harness CLI reads `LITELLM_API_BASE`/`LITELLM_API_KEY`; Gemini's OpenAI-compatible endpoint returns valid tool calls for `gemma-4-31b-it` (`scripts/smoke_toolcall.py`) |
+| O2 | Gemma 4 rate limits on the Gemini API for our project | Key works (3–6 s/call, one transient 500); limits still to measure under load |
 | O3 | Does the QAT w4a16 model load in vLLM on Kaggle T4s (`--dtype float16`, Marlin)? | Test in Kaggle notebook |
 | O4 | Sandbox needs Linux (Docker or POSIX subprocess backend); the owner's laptop is Windows with no Docker/WSL distro | Run sandboxes in Kaggle notebooks (Linux, internet on for Gemini API calls) |
 | R1 | Rate limits too tight for the full matrix | Shrink to 30 issues; spread runs over days |
