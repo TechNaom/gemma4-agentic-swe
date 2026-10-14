@@ -72,6 +72,14 @@ The Gemini API lists `gemma-4-31b-it` and `gemma-4-26b-a4b-it`. Gemma 4-specific
 so they are read from the AI Studio quota page (open item O2). Re-running a subset on the quantised competition
 model shows whether the API results carry over to it.
 
+### 4.1 Supporting resources
+
+The owner has a **Google AI Pro** subscription. It does not raise Gemini API limits, but we use it for:
+
+- Related-work research (Gemini Deep Research, NotebookLM) for the paper
+- Prompt prototyping for the agent and the LLM judge in the AI Studio web UI (higher UI limits)
+- Any Google Cloud credits it unlocks, as a paid fallback if free API limits block the full matrix
+
 ## 5. Issue source
 
 Preferred: issues or examples shipped with the competition dataset (O1). Fallback: a subset of SWE-bench Lite /
