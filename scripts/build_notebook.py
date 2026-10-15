@@ -105,7 +105,7 @@ if MODE == "gpu":
     ]
     meta_extra = {
         "enable_gpu": True,
-        "machine_shape": "NvidiaL4",
+        # "machine_shape": "NvidiaL4" is rejected by the kernels push API (400); Kaggle picks its default GPU.
         "model_sources": [f"google/gemma-4/Other/{GPU_MODEL}/2"],
     }
 else:
