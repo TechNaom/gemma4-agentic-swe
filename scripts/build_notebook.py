@@ -105,7 +105,8 @@ if MODE == "gpu":
     ]
     meta_extra = {
         "enable_gpu": True,
-        # "machine_shape": "NvidiaL4" is rejected by the kernels push API (400); Kaggle picks its default GPU.
+        # Pushing "machine_shape": "NvidiaL4" (with or without the official docker_image) got an unexplained
+        # 400 from the kernels push API. Choose L4 in the Kaggle editor instead; see docs/kaggle-gpu-run.md.
         "model_sources": [f"google/gemma-4/Other/{GPU_MODEL}/2"],
     }
 else:
