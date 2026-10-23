@@ -75,23 +75,35 @@ for w in WHEELHOUSE.glob('*.whl'):
 sh('pip install -q --no-deps --force-reinstall ' + ' '.join(sorted(str(w) for w in tmp_whl.glob('*.whl'))))
 sh('nvidia-smi --query-gpu=name,memory.total --format=csv')"""
 
-START_VLLM = f"""import torch
+START_VLLM = f"""import shutil, traceback
+import torch
 from adk_submission import VllmConfig, VllmServer
 
 MODEL = '{GPU_MODEL}'
-MODEL_PATH = find_one(f'/kaggle/input/models/**/{{MODEL}}/*/config.json').parent
-gpus = torch.cuda.device_count()
-tp = 4 if gpus >= 4 else (2 if gpus >= 2 else 1)
-server = VllmServer(VllmConfig(
-    model=str(MODEL_PATH), port=8000, host='127.0.0.1',
-    tool_call_parser='gemma4', reasoning_parser='gemma4', max_model_len=32768,
-    dtype='bfloat16' if torch.cuda.is_bf16_supported() else 'auto',
-    gpu_memory_utilization=0.90, enable_auto_tool_choice=True,
-    scheduler_reserve_full_isl=False, tensor_parallel_size=tp, startup_timeout=60 * 20,
-    extra_args=['--served-model-name', MODEL],  # agent YAML `model:` must equal this name
-))
-server.start()
-print('vLLM up:', server.base_url, 'tp =', tp, 'gpus =', gpus)
+server = None
+try:
+    MODEL_PATH = find_one(f'/kaggle/input/models/**/{{MODEL}}/*/config.json').parent
+    gpus = torch.cuda.device_count()
+    tp = 4 if gpus >= 4 else (2 if gpus >= 2 else 1)
+    server = VllmServer(VllmConfig(
+        model=str(MODEL_PATH), port=8000, host='127.0.0.1',
+        tool_call_parser='gemma4', reasoning_parser='gemma4', max_model_len=32768,
+        dtype='bfloat16' if torch.cuda.is_bf16_supported() else 'auto',
+        gpu_memory_utilization=0.90, enable_auto_tool_choice=True,
+        scheduler_reserve_full_isl=False, tensor_parallel_size=tp, startup_timeout=60 * 20,
+        extra_args=['--served-model-name', MODEL],  # agent YAML `model:` must equal this name
+    ))
+    server.start()
+    print('vLLM up:', server.base_url, 'tp =', tp, 'gpus =', gpus)
+    open(LOG, 'a').write(f'vLLM up: {{server.base_url}} tp={{tp}} gpus={{gpus}} model={{MODEL_PATH}}\\n')
+except Exception:
+    # Python errors here never reach notebook.log otherwise; record them plus what the inputs look like.
+    open(LOG, 'a').write('START_VLLM FAILED\\n' + traceback.format_exc())
+    sh('find /kaggle/input -maxdepth 6 -path "*models*" | head -40', check=False)
+    raise
+finally:
+    if server is not None and getattr(server, 'log_path', None):
+        shutil.copy(server.log_path, '/kaggle/working/vllm.log')
 sh(f'python scripts/make_agents.py --model {{MODEL}}')"""
 
 SUMMARY = """import json
