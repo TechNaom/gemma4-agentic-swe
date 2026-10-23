@@ -3,8 +3,9 @@
     python scripts/build_notebook.py audit                  # gold/empty check on all tasks (CPU)
     python scripts/build_notebook.py agent                  # one agent run via Gemini API (CPU, needs secret)
     python scripts/build_notebook.py gpu [task ids...]      # agent runs on the Kaggle-hosted competition model (GPU)
+    python scripts/build_notebook.py faults                 # planted-bug patches verified on the valid tasks (CPU)
 
-audit/agent write notebooks/smoke (kernel g4swe-smoke); gpu writes notebooks/gpu (kernel g4swe-gpu).
+audit/agent write notebooks/smoke (kernel g4swe-smoke); gpu and faults get their own notebook and kernel.
 """
 import json
 import sys
@@ -109,6 +110,22 @@ if MODE == "gpu":
         # 400 from the kernels push API. Choose L4 in the Kaggle editor instead; see docs/kaggle-gpu-run.md.
         "model_sources": [f"google/gemma-4/Other/{GPU_MODEL}/2"],
     }
+elif MODE == "faults":
+    name, kernel = "faults", "g4swe-faults"
+    cells = [
+        ("markdown", "# Planted-bug benchmark (piece B)\n\n"
+         "Breaks each valid task's reference patch in one small way (7 operators, `src/g4swe/faults.py`) and "
+         "verifies every mutant with the official harness. A mutant that still resolves is a broken fix the "
+         "tests cannot catch.\n\nCode: https://github.com/TechNaom/gemma4-agentic-swe"),
+        ("code", SETUP + "\n" + INSTALL_HARNESS_ONLY),
+        ("code", "sh(f'python -m g4swe.faults --tasks {DATA_DIR}/tasks.jsonl "
+                 "--task-file experiments/valid_tasks.txt --out faults/patches')\n"
+                 "sh(f'python -m g4swe.run_eval --mode patch --patch-dir faults/patches "
+                 "--data-dir {DATA_DIR} --task-file experiments/valid_tasks.txt', check=False)\n"
+                 "sh('cp faults/manifest.jsonl results/')"),
+        ("code", SUMMARY),
+    ]
+    meta_extra = {"enable_gpu": False, "model_sources": []}
 else:
     name, kernel = "smoke", "g4swe-smoke"
     cells = [
