@@ -115,7 +115,8 @@ server = VllmServer(VllmConfig(
     dtype='bfloat16' if torch.cuda.is_bf16_supported() else 'auto',
     gpu_memory_utilization=0.90, enable_auto_tool_choice=True,
     scheduler_reserve_full_isl=False, tensor_parallel_size=tp, startup_timeout=60 * 20,
-    extra_args=['--served-model-name', MODEL],  # agent YAML `model:` must equal this name
+    extra_args=['--served-model-name', MODEL,  # agent YAML `model:` must equal this name
+                '--max-num-seqs', '8'],  # one agent at a time; vLLM's default 256 runs out of GPU memory
 ))
 server.start()
 print('vLLM up:', server.base_url, 'tp =', tp, 'gpus =', gpus)
