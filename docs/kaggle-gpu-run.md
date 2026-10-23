@@ -16,11 +16,16 @@ The official notebook already has the right GPU, Python version and inputs, so w
 3. Rename it at the top: **g4swe gpu run**.
 4. Right-hand panel → **Session options**:
    - **Accelerator**: choose the **L4** option (for example *GPU L4 x4*). *Why: the model needs about 17 GB; L4 is what the competition uses.*
-   - **Internet**: **On**. *Why: the first cell downloads our code from GitHub.*
+   - **Internet**: leave **Off**. *The L4 x4 machine is the competition's offline environment; switching
+     Internet on fails there. We bring our code in as a dataset instead (next step).*
+   - **Persistence**: **No persistence**. *Every run starts clean; saved versions keep their output anyway.*
 5. Right-hand panel → **Input**: check these are listed (they come with the copy):
    - Competition: *Google - The Gemma 4 Developer Agent*
    - Dataset: *gemma-4-developer-agent-wheelhouse*
    - Models: *gemma-4* (the 31B qat w4a16 variant must be among them)
+
+   Then add our code: **+ Add Input** → **Your Work** (or search **g4swe code**) → **Datasets** →
+   **g4swe code** → **+**. *Why: this private dataset holds our runner, agent configs and task lists.*
 6. **Delete all the existing cells** (click a cell → three-dot menu → Delete cell). We replace them with ours.
 
 ---
@@ -31,7 +36,7 @@ Add each as a new **code** cell (**+ Code**), in order. Paste exactly.
 
 ### Cell 1: Download our code and find the data
 
-*What it does: clones our GitHub repo, defines a helper `sh()` that runs a shell command and saves its output to `notebook.log`, and finds where Kaggle mounted the competition data.*
+*What it does: unpacks our code from the "g4swe code" dataset, defines a helper `sh()` that runs a shell command and saves its output to `notebook.log`, and finds where Kaggle mounted the competition data.*
 
 ```python
 import glob, os, subprocess, sys
@@ -49,13 +54,20 @@ def sh(cmd, check=True):
     if check and p.returncode:
         raise RuntimeError(f'exit {p.returncode}: {cmd}')
 
-sh('git clone -q --depth 1 https://github.com/TechNaom/gemma4-agentic-swe /kaggle/working/repo')
-os.chdir('/kaggle/working/repo')
-
 def find_one(pattern):
     hits = glob.glob(pattern, recursive=True)
     assert hits, f'not found: {pattern}'
     return Path(hits[0])
+
+# Our code comes from the private dataset "g4swe code" (the L4 machine is offline, so no git clone).
+REPO = Path('/kaggle/working/repo'); REPO.mkdir(exist_ok=True)
+tgz = glob.glob('/kaggle/input/**/g4swe-code.tgz', recursive=True)
+if tgz and Path(tgz[0]).is_file():
+    sh(f'tar xzf {tgz[0]} -C {REPO}')
+else:  # Kaggle sometimes unpacks archives into a folder
+    src = find_one('/kaggle/input/**/src/g4swe/run_eval.py').parents[2]
+    sh(f'cp -r {src}/. {REPO}/')
+os.chdir(REPO)
 
 WHEELHOUSE = find_one('/kaggle/input/**/gemma-4-developer-agent-wheelhouse').resolve()
 DATA_DIR = find_one('/kaggle/input/**/gemma-4-developer-agent/tasks.jsonl').parent
@@ -80,7 +92,6 @@ for w in WHEELHOUSE.glob('*.whl'):
     if not (tmp_whl / name).exists():
         os.symlink(w, tmp_whl / name)
 sh('pip install -q --no-deps --force-reinstall ' + ' '.join(sorted(str(w) for w in tmp_whl.glob('*.whl'))))
-sh('pip install -q python-dotenv')
 sh('nvidia-smi --query-gpu=name,memory.total --format=csv')
 ```
 
@@ -162,7 +173,7 @@ Two options:
 
 | Symptom | Likely cause | What to do |
 |---|---|---|
-| `not found: /kaggle/input/**/...` in Cell 1 | An input isn't attached | Right panel → **Input** → add the missing competition, dataset or model |
+| `not found: /kaggle/input/**/...` in Cell 1 | An input isn't attached | Right panel → **Input** → add the missing competition, dataset (incl. **g4swe code**) or model |
 | `is not a supported wheel on this platform` in Cell 2 | Wrong environment | Make sure you copied the official notebook (Part 1) |
 | Cell 3 runs out of memory | Too few GPUs | Check **Accelerator** is an L4 option with several GPUs |
 | `resolved=False` in Cell 4 | The agent didn't solve it | Not an error. That's data. We'll read the trace to see why. |
