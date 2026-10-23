@@ -3,6 +3,7 @@
     python scripts/build_notebook.py audit                  # gold/empty check on all tasks (CPU)
     python scripts/build_notebook.py agent                  # one agent run via Gemini API (CPU, needs secret)
     python scripts/build_notebook.py gpu [task ids...]      # agent runs on the Kaggle-hosted competition model (GPU)
+    python scripts/build_notebook.py pilot                  # all six configs on experiments/pilot_tasks.txt (GPU)
     python scripts/build_notebook.py faults                 # planted-bug patches verified on the valid tasks (CPU)
 
 audit/agent write notebooks/smoke (kernel g4swe-smoke); gpu and faults get their own notebook and kernel.
@@ -115,8 +116,18 @@ for f in sorted(glob.glob('results/*/runs.jsonl')):
     for r in rows:
         print('   ', r)"""
 
-if MODE == "gpu":
-    name, kernel = "gpu", "g4swe-gpu"
+PILOT_RUN = """# All six configs on the pilot tasks, one vLLM server. Results are packed after every config,
+# so finished configs survive if the session hits its time limit.
+for k in ['k0', 'k1', 'k2', 'k3', 'k4', 'k5']:
+    sh(f'python -m g4swe.run_eval --mode agent --backend local --agent agents/{k} '
+       f'--data-dir {DATA_DIR} --task-file experiments/pilot_tasks.txt --max-time-minutes 15', check=False)
+    sh('tar czf /kaggle/working/results.tgz results')"""
+
+if MODE in ("gpu", "pilot"):
+    name, kernel = ("gpu", "g4swe-gpu") if MODE == "gpu" else ("pilot", "g4swe-pilot")
+    run_cell = PILOT_RUN if MODE == "pilot" else (
+        f"sh(f'python -m g4swe.run_eval --mode agent --backend local --agent agents/k0 "
+        f"--data-dir {{DATA_DIR}} --task-ids {GPU_TASKS}', check=False)")
     cells = [
         ("markdown", f"# Agent runs on the Kaggle-hosted competition model\n\n"
          f"Serves `{GPU_MODEL}` with vLLM on the attached GPUs (as in the official getting-started notebook) "
@@ -125,8 +136,7 @@ if MODE == "gpu":
         ("code", SETUP.replace("__GET_CODE__", GET_CODE_OFFLINE)),
         ("code", INSTALL_FULL_WHEELHOUSE),
         ("code", START_VLLM),
-        ("code", f"sh(f'python -m g4swe.run_eval --mode agent --backend local --agent agents/k0 "
-                 f"--data-dir {{DATA_DIR}} --task-ids {GPU_TASKS}', check=False)"),
+        ("code", run_cell),
         ("code", SUMMARY),
     ]
     # Same machine and image as the official getting-started notebook. The L4 x4 machine is offline:
