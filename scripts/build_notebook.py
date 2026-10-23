@@ -31,18 +31,31 @@ def sh(cmd, check=True):
     if check and p.returncode:
         raise RuntimeError(f'exit {p.returncode}: {cmd}')
 
-sh('git clone -q --depth 1 https://github.com/TechNaom/gemma4-agentic-swe /kaggle/working/repo')
-os.chdir('/kaggle/working/repo')
-
 def find_one(pattern):
     hits = glob.glob(pattern, recursive=True)
     assert hits, f'not found: {pattern}'
     return Path(hits[0])
 
+__GET_CODE__
 WHEELHOUSE = find_one('/kaggle/input/**/gemma-4-developer-agent-wheelhouse').resolve()
 DATA_DIR = find_one('/kaggle/input/**/gemma-4-developer-agent/tasks.jsonl').parent
 print('wheelhouse:', WHEELHOUSE, '| data:', DATA_DIR)
 os.environ['PYTHONPATH'] = 'src'"""
+
+GET_CODE_ONLINE = """sh('git clone -q --depth 1 https://github.com/TechNaom/gemma4-agentic-swe /kaggle/working/repo')
+os.chdir('/kaggle/working/repo')"""
+
+# The L4 x4 machine is offline, so the GPU notebook takes our code from the private dataset g4swe-code.
+GET_CODE_OFFLINE = """REPO = Path('/kaggle/working/repo'); REPO.mkdir(exist_ok=True)
+tgz = glob.glob('/kaggle/input/**/g4swe-code.tgz', recursive=True)
+if tgz and Path(tgz[0]).is_file():
+    sh(f'tar xzf {tgz[0]} -C {REPO}')
+else:  # Kaggle sometimes unpacks archives into a folder
+    src = find_one('/kaggle/input/**/src/g4swe/run_eval.py').parents[2]
+    sh(f'cp -r {src}/. {REPO}/')
+os.chdir(REPO)"""
+CODE_DATASET = f"{USER}/g4swe-code"
+OFFICIAL_IMAGE = "gcr.io/kaggle-private-byod/python@sha256:37c64f7dd9c54116ecd1bcc88817c5469b88387388fade02bfa8bf3fc647d461"
 
 INSTALL_HARNESS_ONLY = """sh('pip install -q "google-adk==1.36.1" litellm networkx python-dotenv cachetools docker')
 harness = [str(w) for w in WHEELHOUSE.glob('*.whl') if w.name.split('-')[0] in ('swegemma', 'adk_submission', 'adk_eval_core')]
@@ -60,7 +73,6 @@ for w in WHEELHOUSE.glob('*.whl'):
     if not (tmp_whl / name).exists():
         os.symlink(w, tmp_whl / name)
 sh('pip install -q --no-deps --force-reinstall ' + ' '.join(sorted(str(w) for w in tmp_whl.glob('*.whl'))))
-sh('pip install -q python-dotenv')
 sh('nvidia-smi --query-gpu=name,memory.total --format=csv')"""
 
 START_VLLM = f"""import torch
@@ -97,17 +109,21 @@ if MODE == "gpu":
          f"Serves `{GPU_MODEL}` with vLLM on the attached GPUs (as in the official getting-started notebook) "
          "and runs agent config k0 through the official `swegemma` harness.\n\n"
          "Code: https://github.com/TechNaom/gemma4-agentic-swe"),
-        ("code", SETUP),
+        ("code", SETUP.replace("__GET_CODE__", GET_CODE_OFFLINE)),
         ("code", INSTALL_FULL_WHEELHOUSE),
         ("code", START_VLLM),
         ("code", f"sh(f'python -m g4swe.run_eval --mode agent --backend local --agent agents/k0 "
                  f"--data-dir {{DATA_DIR}} --task-ids {GPU_TASKS}', check=False)"),
         ("code", SUMMARY),
     ]
+    # Same machine and image as the official getting-started notebook. The L4 x4 machine is offline:
+    # pushing it with enable_internet=True is rejected (400), as is turning Internet on in the editor.
     meta_extra = {
         "enable_gpu": True,
-        # Pushing "machine_shape": "NvidiaL4" (with or without the official docker_image) got an unexplained
-        # 400 from the kernels push API. Choose L4 in the Kaggle editor instead; see docs/kaggle-gpu-run.md.
+        "enable_internet": False,
+        "machine_shape": "NvidiaL4",
+        "docker_image": OFFICIAL_IMAGE,
+        "dataset_sources": ["metric/gemma-4-developer-agent-wheelhouse", CODE_DATASET],
         "model_sources": [f"google/gemma-4/Other/{GPU_MODEL}/2"],
     }
 elif MODE == "faults":
@@ -117,7 +133,7 @@ elif MODE == "faults":
          "Breaks each valid task's reference patch in one small way (7 operators, `src/g4swe/faults.py`) and "
          "verifies every mutant with the official harness. A mutant that still resolves is a broken fix the "
          "tests cannot catch.\n\nCode: https://github.com/TechNaom/gemma4-agentic-swe"),
-        ("code", SETUP + "\n" + INSTALL_HARNESS_ONLY),
+        ("code", SETUP.replace("__GET_CODE__", GET_CODE_ONLINE) + "\n" + INSTALL_HARNESS_ONLY),
         ("code", "sh(f'python -m g4swe.faults --tasks {DATA_DIR}/tasks.jsonl "
                  "--task-file experiments/valid_tasks.txt --out faults/patches')\n"
                  "sh(f'python -m g4swe.run_eval --mode patch --patch-dir faults/patches "
@@ -133,7 +149,7 @@ else:
          "Audit mode verifies every task with its reference patch (should resolve) and an empty patch "
          "(should not). Agent mode runs config k0 with `gemma-4-31b-it` via the Gemini API.\n\n"
          "Code: https://github.com/TechNaom/gemma4-agentic-swe"),
-        ("code", SETUP + "\n" + INSTALL_HARNESS_ONLY),
+        ("code", SETUP.replace("__GET_CODE__", GET_CODE_ONLINE) + "\n" + INSTALL_HARNESS_ONLY),
     ]
     if MODE == "audit":
         cells.append(("code", "sh(f'python -m g4swe.run_eval --mode gold  --data-dir {DATA_DIR}')\n"
