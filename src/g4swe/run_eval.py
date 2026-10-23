@@ -26,7 +26,11 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # offline Kaggle sessions may lack it; .env is only used locally
+    def load_dotenv(*_a, **_k):
+        return False
 
 GEMINI_OPENAI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
