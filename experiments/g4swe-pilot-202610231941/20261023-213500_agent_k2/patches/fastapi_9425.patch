@@ -1,0 +1,91 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 8dd0a14c..edb23d24 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -264,6 +264,9 @@ def get_typed_return_annotation(call: Callable[..., Any]) -> Any:
+     if annotation is inspect.Signature.empty:
+         return None
+ 
++    if annotation == "None":
++        return None
++
+     globalns = getattr(call, "__globals__", {})
+     return get_typed_annotation(annotation, globalns)
+ 
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..fc591813
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,19 @@
++from fastapi import FastAPI
++from fastapi.dependencies.utils import get_typed_return_annotation
++
++def test_none_annotation():
++    def func1() -> None:
++        return None
++    
++    def func2() -> "None":
++        return None
++    
++    def func3():
++        return None
++
++    print(f"func1: {get_typed_return_annotation(func1)}")
++    print(f"func2: {get_typed_return_annotation(func2)}")
++    print(f"func3: {get_typed_return_annotation(func3)}")
++
++if __name__ == "__main__":
++    test_none_annotation()
+diff --git a/repro_ann.py b/repro_ann.py
+new file mode 100644
+index 00000000..6469602f
+--- /dev/null
++++ b/repro_ann.py
+@@ -0,0 +1,8 @@
++def func1() -> None:
++    return None
++
++def func2() -> "None":
++    return None
++
++print(f"func1 annotation: {repr(func1.__annotations__.get('return'))}")
++print(f"func2 annotation: {repr(func2.__annotations__.get('return'))}")
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..588b283e
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,32 @@
++
++from fastapi.dependencies.utils import get_typed_return_annotation
++
++def test_get_typed_return_annotation():
++    def func() -> "None":
++        return None
++    
++    result = get_typed_return_annotation(func)
++    print(f"Result for -> 'None': {result} (type: {type(result)})")
++    assert result is None
++
++    def func_none() -> None:
++        return None
++    
++    result_none = get_typed_return_annotation(func_none)
++    print(f"Result for -> None: {result_none} (type: {type(result_none)})")
++    assert result_none is None
++
++    def func_empty():
++        return None
++    
++    result_empty = get_typed_return_annotation(func_empty)
++    print(f"Result for no annotation: {result_empty} (type: {type(result_empty)})")
++    assert result_empty is None
++
++if __name__ == "__main__":
++    try:
++        test_get_typed_return_annotation()
++        print("All tests passed!")
++    except AssertionError as e:
++        print(f"Test failed!")
++        raise e

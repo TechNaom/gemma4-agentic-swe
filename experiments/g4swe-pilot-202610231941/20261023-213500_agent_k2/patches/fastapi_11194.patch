@@ -1,0 +1,131 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index dc663f54..91d5a37d 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -872,13 +872,11 @@ async def _extract_form_body(
+     received_body: FormData,
+ ) -> Dict[str, Any]:
+     values = {}
+-    first_field = body_fields[0]
+-    first_field_info = first_field.field_info
+ 
+     for field in body_fields:
+         value = _get_multidict_value(field, received_body)
+         if (
+-            isinstance(first_field_info, params.File)
++            isinstance(field.field_info, params.File)
+             and is_bytes_field(field)
+             and isinstance(value, UploadFile)
+         ):
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..9461d643
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,52 @@
++from fastapi import FastAPI, File, Form, UploadFile
++from fastapi.testclient import TestClient
++from typing import Optional
++
++app = FastAPI()
++
++@app.post("/test-order-1")
++async def test_order_1(
++    file: Optional[UploadFile] = File(None),
++    form_data: str = Form(...),
++):
++    return {"file": file.filename if file else None, "form_data": form_data}
++
++@app.post("/test-order-2")
++async def test_order_2(
++    form_data: str = Form(...),
++    file: Optional[UploadFile] = File(None),
++):
++    return {"file": file.filename if file else None, "form_data": form_data}
++
++client = TestClient(app)
++
++def test_order_1():
++    response = client.post(
++        "/test-order-1",
++        data={"form_data": "test"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"test_order_1 response: {response.status_code}, {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"file": "test.txt", "form_data": "test"}
++
++def test_order_2():
++    response = client.post(
++        "/test-order-2",
++        data={"form_data": "test"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"test_order_2 response: {response.status_code}, {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"file": "test.txt", "form_data": "test"}
++
++if __name__ == "__main__":
++    try:
++        test_order_1()
++        print("test_order_1 passed")
++        test_order_2()
++        print("test_order_2 passed")
++    except Exception as e:
++        print(f"Error: {e}")
++        import traceback
++        traceback.print_exc()
+diff --git a/reproduce_issue_2.py b/reproduce_issue_2.py
+new file mode 100644
+index 00000000..d781d353
+--- /dev/null
++++ b/reproduce_issue_2.py
+@@ -0,0 +1,48 @@
++from fastapi import FastAPI, File, Form, UploadFile
++from fastapi.testclient import TestClient
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test-multiple")
++async def test_multiple(
++    form_data: str = Form(...), 
++    files: List[UploadFile] = File(...)
++):
++    return {"form_data": form_data, "files": [f.filename for f in files]}
++
++@app.post("/test-multiple-reversed")
++async def test_multiple_reversed(
++    files: List[UploadFile] = File(...), 
++    form_data: str = Form(...)
++):
++    return {"form_data": form_data, "files": [f.filename for f in files]}
++
++client = TestClient(app)
++
++def test_multiple_form_before_files():
++    files = [("files", ("file1", b"content1")), ("files", ("file2", b"content2"))]
++    data = {"form_data": "some data"}
++    response = client.post("/test-multiple", data=data, files=files)
++    print(f"Response: {response.status_code}, Body: {response.json()}")
++    assert response.status_code == 200
++
++def test_multiple_files_before_form():
++    files = [("files", ("file1", b"content1")), ("files", ("file2", b"content2"))]
++    data = {"form_data": "some data"}
++    response = client.post("/test-multiple-reversed", data=data, files=files)
++    print(f"Response: {response.status_code}, Body: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    try:
++        test_multiple_form_before_files()
++        print("test_multiple_form_before_files passed")
++    except Exception as e:
++        print(f"test_multiple_form_before_files failed: {e}")
++
++    try:
++        test_multiple_files_before_form()
++        print("test_multiple_files_before_form passed")
++    except Exception as e:
++        print(f"test_multiple_files_before_form failed: {e}")

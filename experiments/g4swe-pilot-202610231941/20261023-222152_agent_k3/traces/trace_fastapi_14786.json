@@ -1,0 +1,501 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "agent": {
+    "name": "adk-eval-core",
+    "version": "1.0"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "source": "system",
+      "message": "You are an autonomous software engineer. Resolve the issue described in the task by changing the repository's source code under `/workspace`.\n\n## Workflow\n\n1. **Locate.** Pull file names, symbols and error messages from the problem statement. Use the tools you have to find the code involved. Read only what you need.\n2. **Fix.** Make the smallest change that resolves the issue. Keep exact error messages, exception types, status codes and signatures the issue asks for. Prefer several small `edit_file` calls over one large one.\n3. **Verify.** Run only targeted tests for the code you changed, for example `pytest tests/test_x.py -k name`. Never run the whole test suite. Pre-existing failures unrelated to your change can be ignored.\n4. **Submit.** Remove any scratch files you created in `/workspace` (or keep them in `/tmp`), then call `submit_patch` and finish with a one-paragraph summary.\n\n## Rules\n\n- Never create, edit or delete test files or test configuration (`tests/`, `test_*.py`, `*_test.py`, `conftest.py`, `pytest.ini`, `pyproject.toml`, `setup.cfg`, `tox.ini`). Those changes are discarded.\n- The environment is offline. Do not install packages.\n- Do not search outside `/workspace`.\n- Every task needs a non-empty source change. Do not finish without one.",
+      "extra": {
+        "event_type": "system_instruction",
+        "elapsed_s": 0.9430460929870605,
+        "timestamp": 1792794114.2557862,
+        "author": "harness"
+      }
+    },
+    {
+      "step_id": 2,
+      "source": "user",
+      "message": "You are evaluating a software engineering task for repository fastapi/fastapi.\n\nProblem Statement:\n\ud83d\udc1b Strip whitespaces from `Authorization` header credentials\n\n## Description\r\n\r\nFixes whitespace handling in authorization header parameter extraction to comply with [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750#section-2.1).\r\n\r\n## Problem\r\n\r\nThe current implementation preserves leading/trailing whitespace in the extracted credential parameter. While RFC 6750 allows one or more spaces (`1*SP`) between \"Bearer\" and the token, the token definition (`b64token`) doesn't include whitespace characters, meaning spaces should be treated as separators only.\r\n\r\nThis causes the extracted credentials to include extraneous whitespace, which can lead to authentication failures.\r\n\r\n## Solution\r\n\r\nAdded `.strip()` to the parameter extraction to remove leading and trailing whitespace:\r\n```python\r\nreturn scheme, param.strip()\r\n```\r\n\r\n## Reproduction\r\n\r\n### Before the fix:\r\n```python\r\nfrom typing import Annotated\r\nfrom fastapi import Depends, FastAPI\r\nfrom fastapi.security import HTTPAuthorizationCredentials, HTTPBearer\r\n\r\napp = FastAPI()\r\nsecurity = HTTPBearer()\r\n\r\n@app.get(\"/users/me\")\r\ndef read_current_user(\r\n    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]\r\n):\r\n    return {\"scheme\": credentials.scheme, \"credentials\": credentials.credentials}\r\n```\r\n\r\n**Test case 1: Single space (correct)**\r\n```bash\r\ncurl -X 'GET' \\\r\n  'http://127.0.0.1:8000/users/me' \\\r\n  -H 'Authorization: Bearer xxx'\r\n```\r\nResponse: `{\"scheme\":\"Bearer\",\"credentials\":\"xxx\"}` \u2713\r\n\r\n**Test case 2: Multiple spaces**\r\n```bash\r\ncurl -X 'GET' \\\r\n  'http://127.0.0.1:8000/users/me' \\\r\n  -H 'Authorization: Bearer   xxx'\r\n```\r\nResponse: `{\"scheme\":\"Bearer\",\"credentials\":\"  xxx\"}` \u2717\r\n\r\n**Test case 3: Trailing whitespace**\r\n```bash\r\ncurl -X 'GET' \\\r\n  'http://127.0.0.1:8000/users/me' \\\r\n  -H 'Authorization: Bearer xxx '\r\n```\r\nResponse: `{\"scheme\":\"Bearer\",\"credentials\":\"xxx \"}` \u2717\r\n\r\n### After the fix:\r\n\r\nAll three test cases now return: `{\"scheme\":\"Bearer\",\"credentials\":\"xxx\"}` \u2713\r\n\r\n## Changes\r\n\r\n- Modified `get_authorization_scheme_param()` in `fastapi/security/utils.py` to strip whitespace from the parameter\r\n- Added test cases to verify the fix handles multiple spaces and trailing whitespace correctly\r\n\r\n## Checklist\r\n\r\n- [x] Tests added to cover the bug fix\r\n- [x] Existing tests pass\n\n## Task Budget (Session terminates when any budget is exhausted)\n- Time allowance: 15.0 minutes\n- Tool calls allowance: 60 calls\n- Max loop iterations: 200 turns\n\n## Execution Environment Rules\n- Single command timeout: 300 seconds (commands exceeding this fail without ending the session)\n- Command output limit: 5000 characters\n- File view limit: 150 lines per read_file call\n- File character limit: 10000 characters per read_file call\n- Environment is offline (no network/PyPI access). All repository and test dependencies are ALREADY pre-installed. Do NOT attempt to run pip install or download packages.\n\n## Instructions:\n0. All source code is under `/workspace`. Do NOT search outside `/workspace` (e.g. `/usr/`, `/wheels/`, system site-packages). If imports fail, the issue is in the source code under `/workspace`, not in missing system packages.\n1. Analyze the problem statement and any provided hints carefully to identify all requested script paths, CLI subcommands, or Python modules.\n2. Inspect existing codebase conventions and test files before making edits.\n3. Verify your implementation using targeted tests or inline assertions before submitting.\n4. Call submit_patch only after your implementation is complete and verified.\n5. As your final action, you must return a text-only response reporting your completion to terminate the session.\n## Code Intelligence Tools\nThis repository has pre-built code graph and embedding data indexed by dotted symbol path (e.g. `pkg.module.Class.method`). Use these tools for fast, targeted navigation:\n- `get_code_subgraph(nodes)`: Get the induced call subgraph connecting a list of symbol nodes.\n\n## Workspace Layout\nThe repository is located at `/workspace`. Here is the directory tree (up to 3 levels):\n```\n./CITATION.cff\n./conftest.py\n./CONTRIBUTING.md\n./docs\n./docs_src\n./fastapi\n./fastapi/applications.py\n./fastapi/background.py\n./fastapi/cli.py\n./fastapi/_compat\n./fastapi/_compat/__init__.py\n./fastapi/_compat/shared.py\n./fastapi/_compat/v2.py\n./fastapi/concurrency.py\n./fastapi/datastructures.py\n./fastapi/dependencies\n./fastapi/dependencies/__init__.py\n./fastapi/dependencies/models.py\n./fastapi/dependencies/utils.py\n./fastapi/encoders.py\n./fastapi/exception_handlers.py\n./fastapi/exceptions.py\n./fastapi/__init__.py\n./fastapi/logger.py\n./fastapi/__main__.py\n./fastapi/middleware\n./fastapi/middleware/asyncexitstack.py\n./fastapi/middleware/cors.py\n./fastapi/middleware/gzip.py\n./fastapi/middleware/httpsredirect.py\n./fastapi/middleware/__init__.py\n./fastapi/middleware/trustedhost.py\n./fastapi/middleware/wsgi.py\n./fastapi/openapi\n./fastapi/openapi/constants.py\n./fastapi/openapi/docs.py\n./fastapi/openapi/__init__.py\n./fastapi/openapi/models.py\n./fastapi/openapi/utils.py\n./fastapi/param_functions.py\n./fastapi/params.py\n./fastapi/py.typed\n./fastapi/requests.py\n./fastapi/responses.py\n./fastapi/routing.py\n./fastapi/security\n./fastapi/security/api_key.py\n./fastapi/security/base.py\n./fastapi/security/http.py\n./fastapi/security/__init__.py\n./fastapi/security/oauth2.py\n./fastapi/security/open_id_connect_url.py\n./fastapi/security/utils.py\n./fastapi/staticfiles.py\n./fastapi/templating.py\n./fastapi/testclient.py\n./fastapi/types.py\n./fastapi/utils.py\n./fastapi/websockets.py\n./LICENSE\n./pdm_build.py\n./pyproject.toml\n./pytest.ini\n./README.md\n./scripts\n./scripts/contributors.py\n./scripts/coverage.sh\n./scripts/deploy_docs_status.py\n./scripts/doc_parsing_utils.py\n./scripts/docs.py\n./scripts/format.sh\n./scripts/general-llm-prompt.md\n./scripts/label_approved.py\n./scripts/lint.sh\n./scripts/mkdocs_hooks.py\n./scripts/notify_translations.py\n./scripts/people.py\n./scripts/playwright\n./scripts/playwright/cookie_param_models\n./scripts/playwright/header_param_models\n./scripts/playwright/query_param_models\n./scripts/playwright/request_form_models\n./scripts/playwright/separate_openapi_schemas\n./scripts/playwright/sql_databases\n./scripts/sponsors.py\n./scripts/test-cov-html.sh\n./scripts/tests\n./scripts/test.sh\n./scripts/tests/test_translation_fixer\n./scripts/topic_repos.py\n./scripts/translate.py\n./scripts/translation_fixer.py\n./SECURITY.md\n./tests\n./uv.lock\n```\n",
+      "extra": {
+        "event_type": "task_prompt",
+        "elapsed_s": 0.9430561065673828,
+        "timestamp": 1792794114.2557962,
+        "author": "harness"
+      }
+    },
+    {
+      "step_id": 3,
+      "source": "agent",
+      "message": "The user wants to fix a bug where whitespaces are not stripped from the `Authorization` header credentials in FastAPI.\nThe problem description points to `get_authorization_scheme_param()` in `fastapi/security/utils.py`.\n\nI need to:\n1.  Locate `get_authorization_scheme_param()` in `fastapi/security/utils.py`.\n2.  Modify it to strip whitespaces from the parameter.\n3.  Verify the fix with a test case.\n\nLet's start by reading `fastapi/security/utils.py`.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_3",
+          "function_name": "read_file",
+          "arguments": {
+            "filepath": "fastapi/security/utils.py"
+          },
+          "extra": {
+            "elapsed_s": 7.180453777313232,
+            "timestamp": 1792794120.4931939,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"filepath\": \"fastapi/security/utils.py\", \"content\": \"from typing import Optional\\n\\n\\ndef get_authorization_scheme_param(\\n    authorization_header_value: Optional[str],\\n) -> tuple[str, str]:\\n    if not authorization_header_value:\\n        return \\\"\\\", \\\"\\\"\\n    scheme, _, param = authorization_header_value.partition(\\\" \\\")\\n    return scheme, param\", \"start_line\": 1, \"end_line\": 10, \"total_lines\": 10, \"is_truncated\": false}",
+        "extra": {
+          "tool_name": "read_file",
+          "elapsed_s": 7.1857569217681885,
+          "timestamp": 1792794120.498497,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 3116,
+        "completion_tokens": 149,
+        "cached_tokens": 0,
+        "total_tokens": 3265
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 7.180453777313232,
+        "timestamp": 1792794120.4931939,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 4,
+      "source": "agent",
+      "message": "The function `get_authorization_scheme_param` is very simple:\n\n```python\ndef get_authorization_scheme_param(\n    authorization_header_value: Optional[str],\n) -> tuple[str, str]:\n    if not authorization_header_value:\n        return \"\", \"\"\n    scheme, _, param = authorization_header_value.partition(\" \")\n    return scheme, param\n```\n\nAs described in the problem, if `authorization_header_value` is `\"Bearer   xxx\"`, `partition(\" \")` will result in:\n`scheme` = `\"Bearer\"`\n`_` = `\" \"`\n`param` = `\"  xxx\"`\n\nAnd it returns `(\"Bearer\", \"  xxx\")`.\n\nThe fix is to return `scheme, param.strip()`.\n\nWait, if `authorization_header_value` is `\"Bearer xxx \"`, `param` will be `\"xxx \"`. `param.strip()` will make it `\"xxx\"`.\n\nLet's verify this with a small script before applying the change.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_6",
+          "function_name": "write_file",
+          "arguments": {
+            "content": "from fastapi.security.utils import get_authorization_scheme_param\n\ntest_cases = [\n    (\"Bearer xxx\", (\"Bearer\", \"xxx\")),\n    (\"Bearer   xxx\", (\"Bearer\", \"xxx\")),\n    (\"Bearer xxx \", (\"Bearer\", \"xxx\")),\n    (\"Bearer  xxx  \", (\"Bearer\", \"xxx\")),\n    (\"\", (\"\", \"\")),\n    (None, (\"\", \"\")),\n]\n\nfor input_val, expected in test_cases:\n    actual = get_authorization_scheme_param(input_val)\n    print(f\"Input: {repr(input_val)} | Expected: {repr(expected)} | Actual: {repr(actual)} | {'\u2713' if actual == expected else '\u2717'}\")\n",
+            "filepath": "repro.py"
+          },
+          "extra": {
+            "elapsed_s": 18.245482444763184,
+            "timestamp": 1792794131.5582225,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"filepath\": \"repro.py\", \"size\": 515}",
+        "extra": {
+          "tool_name": "write_file",
+          "elapsed_s": 18.25404191017151,
+          "timestamp": 1792794131.566782,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 3417,
+        "completion_tokens": 411,
+        "cached_tokens": 0,
+        "total_tokens": 3828
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 18.245482444763184,
+        "timestamp": 1792794131.5582225,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 5,
+      "source": "agent",
+      "message": "Now run the reproduction script to see the current behavior.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_9",
+          "function_name": "run_command",
+          "arguments": {
+            "command": "python3 repro.py"
+          },
+          "extra": {
+            "elapsed_s": 19.38845157623291,
+            "timestamp": 1792794132.7011917,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"stdout\": \"Input: 'Bearer xxx' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', 'xxx') | \\u2713\\nInput: 'Bearer   xxx' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', '  xxx') | \\u2717\\nInput: 'Bearer xxx ' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', 'xxx ') | \\u2717\\nInput: 'Bearer  xxx  ' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', ' xxx  ') | \\u2717\\nInput: '' | Expected: ('', '') | Actual: ('', '') | \\u2713\\nInput: None | Expected: ('', '') | Actual: ('', '') | \\u2713\\n\", \"stderr\": \"\", \"exit_code\": 0}",
+        "extra": {
+          "tool_name": "run_command",
+          "elapsed_s": 19.929838180541992,
+          "timestamp": 1792794133.2425783,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 3863,
+        "completion_tokens": 35,
+        "cached_tokens": 0,
+        "total_tokens": 3898
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 19.38845157623291,
+        "timestamp": 1792794132.7011917,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 6,
+      "source": "agent",
+      "message": "The reproduction script confirms the issue. Now I will apply the fix.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_12",
+          "function_name": "edit_file",
+          "arguments": {
+            "filepath": "fastapi/security/utils.py",
+            "new_string": "    return scheme, param.strip()",
+            "old_string": "    return scheme, param"
+          },
+          "extra": {
+            "elapsed_s": 21.92617702484131,
+            "timestamp": 1792794135.238917,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"filepath\": \"fastapi/security/utils.py\", \"occurrences\": 1, \"strategy\": \"exact\", \"diff\": \"--- a/fastapi/security/utils.py\\n+++ b/fastapi/security/utils.py\\n@@ -7,4 +7,4 @@\\n     if not authorization_header_value:\\n         return \\\"\\\", \\\"\\\"\\n     scheme, _, param = authorization_header_value.partition(\\\" \\\")\\n-    return scheme, param\\n+    return scheme, param.strip()\\n\", \"is_truncated\": false}",
+        "extra": {
+          "tool_name": "edit_file",
+          "elapsed_s": 21.92929220199585,
+          "timestamp": 1792794135.2420323,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 4091,
+        "completion_tokens": 68,
+        "cached_tokens": 0,
+        "total_tokens": 4159
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 21.92617702484131,
+        "timestamp": 1792794135.238917,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 7,
+      "source": "agent",
+      "message": "Now let's run the reproduction script again to verify the fix.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_15",
+          "function_name": "run_command",
+          "arguments": {
+            "command": "python3 repro.py"
+          },
+          "extra": {
+            "elapsed_s": 23.120803594589233,
+            "timestamp": 1792794136.4335437,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"stdout\": \"Input: 'Bearer xxx' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', 'xxx') | \\u2713\\nInput: 'Bearer   xxx' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', 'xxx') | \\u2713\\nInput: 'Bearer xxx ' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', 'xxx') | \\u2713\\nInput: 'Bearer  xxx  ' | Expected: ('Bearer', 'xxx') | Actual: ('Bearer', 'xxx') | \\u2713\\nInput: '' | Expected: ('', '') | Actual: ('', '') | \\u2713\\nInput: None | Expected: ('', '') | Actual: ('', '') | \\u2713\\n\", \"stderr\": \"\", \"exit_code\": 0}",
+        "extra": {
+          "tool_name": "run_command",
+          "elapsed_s": 23.59896993637085,
+          "timestamp": 1792794136.91171,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 4307,
+        "completion_tokens": 38,
+        "cached_tokens": 0,
+        "total_tokens": 4345
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 23.120803594589233,
+        "timestamp": 1792794136.4335437,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 8,
+      "source": "agent",
+      "message": "The fix is verified. Now I should check if there are any existing tests that I should run to make sure I didn't break anything.\n\nI'll search for tests that use `get_authorization_scheme_param` or `HTTPBearer`.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_18",
+          "function_name": "run_command",
+          "arguments": {
+            "command": "grep -r \"get_authorization_scheme_param\" tests/"
+          },
+          "extra": {
+            "elapsed_s": 26.05738401412964,
+            "timestamp": 1792794139.370124,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"error\", \"error_type\": \"CommandError\", \"error_message\": \"\", \"details\": {\"stdout\": \"\", \"stderr\": \"\", \"exit_code\": 1}}",
+        "extra": {
+          "tool_name": "run_command",
+          "elapsed_s": 26.06975555419922,
+          "timestamp": 1792794139.3824956,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 4533,
+        "completion_tokens": 85,
+        "cached_tokens": 0,
+        "total_tokens": 4618
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 26.05738401412964,
+        "timestamp": 1792794139.370124,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 9,
+      "source": "agent",
+      "message": "It seems `get_authorization_scheme_param` is not directly called in tests. Let's search for `HTTPBearer`.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_21",
+          "function_name": "run_command",
+          "arguments": {
+            "command": "grep -r \"HTTPBearer\" tests/"
+          },
+          "extra": {
+            "elapsed_s": 27.65112328529358,
+            "timestamp": 1792794140.9638634,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"stdout\": \"tests/test_top_level_security_scheme_in_openapi.py:from fastapi.security import HTTPBearer\\ntests/test_top_level_security_scheme_in_openapi.py:bearer_scheme = HTTPBearer()\\ntests/test_top_level_security_scheme_in_openapi.py:                        \\\"security\\\": [{\\\"HTTPBearer\\\": []}],\\ntests/test_top_level_security_scheme_in_openapi.py:                \\\"securitySchemes\\\": {\\\"HTTPBearer\\\": {\\\"type\\\": \\\"http\\\", \\\"scheme\\\": \\\"bearer\\\"}}\\ntests/test_webhooks_security.py:from fastapi.security import HTTPBearer\\ntests/test_webhooks_security.py:bearer_scheme = HTTPBearer()\\ntests/test_webhooks_security.py:                    \\\"security\\\": [{\\\"HTTPBearer\\\": []}],\\ntests/test_webhooks_security.py:            \\\"securitySchemes\\\": {\\\"HTTPBearer\\\": {\\\"type\\\": \\\"http\\\", \\\"scheme\\\": \\\"bearer\\\"}},\\ntests/test_security_http_bearer_description.py:from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer\\ntests/test_security_http_bearer_description.py:security = HTTPBearer(description=\\\"HTTP Bearer token scheme\\\")\\ntests/test_security_http_bearer_description.py:                    \\\"security\\\": [{\\\"HTTPBearer\\\": []}],\\ntests/test_security_http_bearer_description.py:                \\\"HTTPBearer\\\": {\\ntests/test_security_http_bearer_optional.py:from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer\\ntests/test_security_http_bearer_optional.py:security = HTTPBearer(auto_error=False)\\ntests/test_security_http_bearer_optional.py:                    \\\"security\\\": [{\\\"HTTPBearer\\\": []}],\\ntests/test_security_http_bearer_optional.py:            \\\"securitySchemes\\\": {\\\"HTTPBearer\\\": {\\\"type\\\": \\\"http\\\", \\\"scheme\\\": \\\"bearer\\\"}}\\ntests/test_security_http_bearer.py:from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer\\ntests/test_security_http_bearer.py:security = HTTPBearer()\\ntests/test_security_http_bearer.py:                    \\\"security\\\": [{\\\"HTTPBearer\\\": []}],\\ntests/test_security_http_bearer.py:            \\\"securitySchemes\\\": {\\\"HTTPBearer\\\": {\\\"type\\\": \\\"http\\\", \\\"scheme\\\": \\\"bearer\\\"}}\\ntests/test_tutorial/test_authentication_error_status_code/test_tutorial001.py:                        \\\"security\\\": [{\\\"HTTPBearer403\\\": []}],\\ntests/test_tutorial/test_authentication_error_status_code/test_tutorial001.py:                    \\\"HTTPBearer403\\\": {\\\"type\\\": \\\"http\\\", \\\"scheme\\\": \\\"bearer\\\"}\\n\", \"stderr\": \"\", \"exit_code\": 0}",
+        "extra": {
+          "tool_name": "run_command",
+          "elapsed_s": 27.66413116455078,
+          "timestamp": 1792794140.9768713,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 4670,
+        "completion_tokens": 55,
+        "cached_tokens": 0,
+        "total_tokens": 4725
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 27.65112328529358,
+        "timestamp": 1792794140.9638634,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 10,
+      "source": "agent",
+      "message": "`tests/test_security_http_bearer.py` seems like the most relevant one. Let's run it.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_24",
+          "function_name": "run_command",
+          "arguments": {
+            "command": "pytest tests/test_security_http_bearer.py"
+          },
+          "extra": {
+            "elapsed_s": 29.732690811157227,
+            "timestamp": 1792794143.045431,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"stdout\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.13, pytest-8.4.2, pluggy-1.6.0\\nrootdir: /tmp/swegemma_sandbox_f6e31cdc-031_7n9qum3t/workspace\\nconfigfile: pytest.ini\\nplugins: typeguard-4.5.1, langsmith-0.7.34\\ncollected 4 items\\n\\ntests/test_security_http_bearer.py ....                                  [100%]\\n\\n============================== 4 passed in 0.34s ===============================\\n\", \"stderr\": \"\", \"exit_code\": 0}",
+        "extra": {
+          "tool_name": "run_command",
+          "elapsed_s": 31.218451023101807,
+          "timestamp": 1792794144.531191,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 5407,
+        "completion_tokens": 57,
+        "cached_tokens": 0,
+        "total_tokens": 5464
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 29.732690811157227,
+        "timestamp": 1792794143.045431,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 11,
+      "source": "agent",
+      "message": "All tests passed. I'll remove the `repro.py` file and submit the patch.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_27",
+          "function_name": "run_command",
+          "arguments": {
+            "command": "rm repro.py"
+          },
+          "extra": {
+            "elapsed_s": 32.622933864593506,
+            "timestamp": 1792794145.935674,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"stdout\": \"\", \"stderr\": \"\", \"exit_code\": 0}",
+        "extra": {
+          "tool_name": "run_command",
+          "elapsed_s": 32.6286838054657,
+          "timestamp": 1792794145.941424,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 5652,
+        "completion_tokens": 44,
+        "cached_tokens": 0,
+        "total_tokens": 5696
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 32.622933864593506,
+        "timestamp": 1792794145.935674,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 12,
+      "source": "agent",
+      "message": "I have fixed the issue by adding `.strip()` to the parameter extraction in `get_authorization_scheme_param` in `fastapi/security/utils.py`. I verified the fix with a reproduction script and ran existing tests.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_30",
+          "function_name": "submit_patch",
+          "arguments": {},
+          "extra": {
+            "elapsed_s": 34.40445685386658,
+            "timestamp": 1792794147.717197,
+            "author": "swe_agent_k3",
+            "model_version": "gemma-4-31b-it-qat-w4a16-ct"
+          }
+        }
+      ],
+      "observation": {
+        "content": "{\"status\": \"ok\", \"patch_size\": 404, \"files_changed\": 1}",
+        "extra": {
+          "tool_name": "submit_patch",
+          "elapsed_s": 34.428260803222656,
+          "timestamp": 1792794147.741001,
+          "author": "swe_agent_k3"
+        }
+      },
+      "metrics": {
+        "prompt_tokens": 5730,
+        "completion_tokens": 62,
+        "cached_tokens": 0,
+        "total_tokens": 5792
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 34.40445685386658,
+        "timestamp": 1792794147.717197,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 13,
+      "source": "agent",
+      "message": "I have completed the task.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "metrics": {
+        "prompt_tokens": 5828,
+        "completion_tokens": 130,
+        "cached_tokens": 0,
+        "total_tokens": 5958
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "thinking",
+        "elapsed_s": 38.06234169006348,
+        "timestamp": 1792794151.3750818,
+        "author": "swe_agent_k3"
+      }
+    },
+    {
+      "step_id": 14,
+      "source": "agent",
+      "message": "The issue was that the `get_authorization_scheme_param` function in `fastapi/security/utils.py` did not strip leading or trailing whitespace from the extracted authorization credentials, which could lead to authentication failures and violated RFC 6750. I modified the function to call `.strip()` on the extracted parameter before returning it. This ensures that any extra spaces between the scheme (e.g., \"Bearer\") and the token, as well as any trailing spaces, are removed. I verified the fix with a reproduction script and confirmed that existing tests still pass.",
+      "model_name": "gemma-4-31b-it-qat-w4a16-ct",
+      "llm_call_count": 1,
+      "extra": {
+        "event_type": "final",
+        "elapsed_s": 38.06234169006348,
+        "timestamp": 1792794151.3750818,
+        "author": "swe_agent_k3"
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 50614,
+    "total_completion_tokens": 1134,
+    "total_cached_tokens": 0,
+    "total_tokens": 51748,
+    "total_steps": 14
+  }
+}

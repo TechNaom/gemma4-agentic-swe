@@ -1,0 +1,45 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..55c034f1
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,26 @@
++
++import io
++from rich.console import Console
++from rich.progress import Progress
++
++def test_progress_disabled_no_newline():
++    buffer = io.StringIO()
++    console = Console(file=buffer, force_terminal=False)
++    print(f"Console is_interactive: {console.is_interactive}")
++    print(f"Console is_jupyter: {console.is_jupyter}")
++    
++    # Create Progress with disable=True
++    with Progress(console=console, disable=True) as progress:
++        progress.add_task("Task 1")
++        progress.update(0, advance=1)
++    
++    output = buffer.getvalue()
++    print(f"Output: {repr(output)}")
++    assert output == "", f"Expected empty output, got {repr(output)}"
++
++if __name__ == "__main__":
++    try:
++        test_progress_disabled_no_newline()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
+diff --git a/rich/progress.py b/rich/progress.py
+index 421e1411..756b749d 100644
+--- a/rich/progress.py
++++ b/rich/progress.py
+@@ -1173,7 +1173,7 @@ class Progress(JupyterMixin):
+     def stop(self) -> None:
+         """Stop the progress display."""
+         self.live.stop()
+-        if not self.console.is_interactive and not self.console.is_jupyter:
++        if not self.disable and not self.console.is_interactive and not self.console.is_jupyter:
+             self.console.print()
+ 
+     def __enter__(self) -> Self:

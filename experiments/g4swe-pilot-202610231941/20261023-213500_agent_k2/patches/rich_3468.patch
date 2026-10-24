@@ -1,0 +1,68 @@
+diff --git a/rich/console.py b/rich/console.py
+index ee543553..414ab0a9 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -724,6 +724,7 @@ class Console:
+             self._color_system = COLOR_SYSTEMS[color_system]
+ 
+         self._lock = threading.RLock()
++        self._broken_pipe = False
+         self._log_render = LogRender(
+             show_time=log_time,
+             show_path=log_path,
+@@ -1995,7 +1996,7 @@ class Console:
+         legacy Windows consoles, the win32 API is called directly.
+         This method will also record what it renders if recording is enabled via Console.record.
+         """
+-        if self.quiet:
++        if self.quiet or self._broken_pipe:
+             del self._buffer[:]
+             return
+         with self._lock:
+@@ -2027,7 +2028,12 @@ class Console:
+                             if self.no_color and self._color_system:
+                                 buffer = list(Segment.remove_color(buffer))
+ 
+-                            legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
++                            try:
++                                legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
++                            except BrokenPipeError:
++                                self._broken_pipe = True
++                                del self._buffer[:]
++                                return
+                         else:
+                             # Either a non-std stream on legacy Windows, or modern Windows.
+                             text = self._render_buffer(self._buffer[:])
+@@ -2054,6 +2060,10 @@ class Console:
+                                     if batch:
+                                         write("".join(batch))
+                                         batch.clear()
++                            except BrokenPipeError:
++                                self._broken_pipe = True
++                                del self._buffer[:]
++                                return
+                             except UnicodeEncodeError as error:
+                                 error.reason = f"{error.reason}\n*** You may need to add PYTHONIOENCODING=utf-8 to your environment ***"
+                                 raise
+@@ -2061,11 +2071,20 @@ class Console:
+                         text = self._render_buffer(self._buffer[:])
+                         try:
+                             self.file.write(text)
++                        except BrokenPipeError:
++                            self._broken_pipe = True
++                            del self._buffer[:]
++                            return
+                         except UnicodeEncodeError as error:
+                             error.reason = f"{error.reason}\n*** You may need to add PYTHONIOENCODING=utf-8 to your environment ***"
+                             raise
+ 
+-                    self.file.flush()
++                    try:
++                        self.file.flush()
++                    except BrokenPipeError:
++                        self._broken_pipe = True
++                        del self._buffer[:]
++                        return
+                     del self._buffer[:]
+ 
+     def _render_buffer(self, buffer: Iterable[Segment]) -> str:

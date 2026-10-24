@@ -1,0 +1,60 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..bf30406f
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,20 @@
++import inspect
++from rich.repr import auto
++
++class EqualToEmpty:
++    def __eq__(self, other):
++        return True
++
++@auto
++class EqualToEmptyEgg:
++    def __init__(self, foo: str, bar=EqualToEmpty()):
++        self.foo = foo
++        self.bar = bar
++
++egg = EqualToEmptyEgg("hello")
++r = repr(egg)
++print(f"repr: {r}")
++
++# Let's see what auto_rich_repr yields
++for arg in egg.__rich_repr__():
++    print(f"arg: {arg}")
+diff --git a/repro_debug.py b/repro_debug.py
+new file mode 100644
+index 00000000..647f1339
+--- /dev/null
++++ b/repro_debug.py
+@@ -0,0 +1,15 @@
++import rich.repr
++
++class EqualToEmpty:
++    def __eq__(self, other):
++        return True
++    def __repr__(self):
++        return "EqualToEmpty()"
++
++@rich.repr.auto
++class EqualToEmptyEgg:
++    def __init__(self, foo: str, bar=EqualToEmpty()):
++        self.foo = foo
++        self.bar = bar
++
++print(f"Repr: {repr(EqualToEmptyEgg('hello'))}")
+diff --git a/rich/repr.py b/rich/repr.py
+index 9dd65cde..95331006 100644
+--- a/rich/repr.py
++++ b/rich/repr.py
+@@ -76,7 +76,7 @@ def auto(
+                         param.POSITIONAL_OR_KEYWORD,
+                         param.KEYWORD_ONLY,
+                     ):
+-                        if param.default == param.empty:
++                        if param.default is param.empty:
+                             yield getattr(self, param.name)
+                         else:
+                             yield param.name, getattr(self, param.name), param.default

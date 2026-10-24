@@ -1,0 +1,38 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 8dd0a14c..165c4d6c 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -252,6 +252,8 @@ def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+ 
+ def get_typed_annotation(annotation: Any, globalns: Dict[str, Any]) -> Any:
+     if isinstance(annotation, str):
++        if annotation == "None":
++            return None
+         annotation = ForwardRef(annotation)
+         annotation = evaluate_forwardref(annotation, globalns, globalns)
+     return annotation
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..f3bffcd8
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,19 @@
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/test", status_code=204)
++def test_route() -> "None":
++    return None
++
++client = TestClient(app)
++
++def test_none_return_type():
++    response = client.get("/test")
++    assert response.status_code == 204
++    assert response.text == ""
++
++if __name__ == "__main__":
++    test_none_return_type()
++    print("Test passed!")

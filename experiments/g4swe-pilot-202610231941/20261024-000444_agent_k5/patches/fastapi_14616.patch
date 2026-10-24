@@ -1,0 +1,75 @@
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index dae78a32..646122c7 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -15,7 +15,7 @@ from typing import (
+ from fastapi._compat import shared
+ from fastapi.openapi.constants import REF_TEMPLATE
+ from fastapi.types import IncEx, ModelNameMap, UnionType
+-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, create_model
++from pydantic import BaseModel, ConfigDict, Field, Json, TypeAdapter, create_model
+ from pydantic import PydanticSchemaGenerationError as PydanticSchemaGenerationError
+ from pydantic import PydanticUndefinedAnnotation as PydanticUndefinedAnnotation
+ from pydantic import ValidationError as ValidationError
+@@ -404,6 +404,8 @@ def is_scalar_field(field: ModelField) -> bool:
+ 
+ 
+ def is_sequence_field(field: ModelField) -> bool:
++    if Json in getattr(field.field_info, "metadata", []):
++        return False
+     return shared.field_annotation_is_sequence(field.field_info.annotation)
+ 
+ 
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..6bcc3183
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,5 @@
++from typing import Annotated
++from pydantic import Json
++t = Annotated[list[str], Json]
++for m in t.__metadata__:
++    print(f"m: {m}, isinstance(m, Json): {isinstance(m, Json)}, m is Json: {m is Json}")
+diff --git a/repro_fix.py b/repro_fix.py
+new file mode 100644
+index 00000000..0fa4df91
+--- /dev/null
++++ b/repro_fix.py
+@@ -0,0 +1,26 @@
++from typing import Annotated
++from pydantic import BaseModel, Json
++from dataclasses import dataclass
++
++@dataclass
++class ModelField:
++    field_info: any
++
++@dataclass
++class FieldInfo:
++    metadata: list
++    annotation: any
++
++def is_sequence_field(field: ModelField) -> bool:
++    if any(m is Json or isinstance(m, Json) for m in getattr(field.field_info, "metadata", [])):
++        return False
++    return False # simplified for test
++
++class MyModel1(BaseModel):
++    items: Json[list[str]]
++
++model1 = MyModel1
++field_info1 = model1.model_fields["items"]
++field = ModelField(field_info=field_info1)
++
++print(f"is_sequence_field: {is_sequence_field(field)}")
+diff --git "a/\343\200\201\343\200\214repro.py\343\200\215" "b/\343\200\201\343\200\214repro.py\343\200\215"
+new file mode 100644
+index 00000000..280a6e51
+--- /dev/null
++++ "b/\343\200\201\343\200\214repro.py\343\200\215"
+@@ -0,0 +1,4 @@
++from pydantic import Json
++t = Json[list[str]]
++print(f"t: {t}")
++print(f"type(t): {type(t)}")

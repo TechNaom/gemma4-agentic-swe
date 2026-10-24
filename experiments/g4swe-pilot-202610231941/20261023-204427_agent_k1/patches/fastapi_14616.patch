@@ -1,0 +1,212 @@
+diff --git a/check_json.py b/check_json.py
+new file mode 100644
+index 00000000..120aadfc
+--- /dev/null
++++ b/check_json.py
+@@ -0,0 +1,9 @@
++from typing import List, Annotated, get_origin, get_args
++from pydantic import Json
++import pprint
++
++t = Json[List[str]]
++print(f"Type: {t}")
++print(f"Origin: {get_origin(t)}")
++print(f"Args: {get_args(t)}")
++pprint.pprint(t)
+diff --git a/debug_json.py b/debug_json.py
+new file mode 100644
+index 00000000..9556c228
+--- /dev/null
++++ b/debug_json.py
+@@ -0,0 +1,8 @@
++from typing import Annotated, List
++from pydantic import Json
++from typing_extensions import get_origin, get_args
++
++annotation = Json[List[str]]
++print(f"Annotation: {annotation}")
++print(f"Origin: {get_origin(annotation)}")
++print(f"Args: {get_args(annotation)}")
+diff --git a/debug_json_type.py b/debug_json_type.py
+new file mode 100644
+index 00000000..432f1867
+--- /dev/null
++++ b/debug_json_type.py
+@@ -0,0 +1,3 @@
++from pydantic import Json
++print(f"Json: {Json}")
++print(f"Json type: {type(Json)}")
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index e5ac51d5..d9ea781c 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -731,8 +731,10 @@ def _get_multidict_value(
+ ) -> Any:
+     alias = alias or get_validation_alias(field)
+     if is_sequence_field(field) and isinstance(values, (ImmutableMultiDict, Headers)):
++        print(f"DEBUG: is_sequence_field({field.name}) is True, annotation: {field.field_info.annotation}")
+         value = values.getlist(alias)
+     else:
++        print(f"DEBUG: is_sequence_field({field.name}) is False, annotation: {field.field_info.annotation}")
+         value = values.get(alias, None)
+     if (
+         value is None
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..d67fcafe
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, Form
++from fastapi.testclient import TestClient
++from pydantic import Json
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test")
++async def test(data: Json[List[str]] = Form(...)):
++    return {"data": data}
++
++client = TestClient(app)
++
++def test_json_form():
++    # This should work: data is a JSON string '["a", "b"]'
++    # FastAPI should use .get() to get '["a", "b"]', then Pydantic should parse it as List[str]
++    response = client.post("/test", data={"data": '["a", "b"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"data": ["a", "b"]}
++
++if __name__ == "__main__":
++    try:
++        test_json_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
+diff --git a/repro_debug.py b/repro_debug.py
+new file mode 100644
+index 00000000..d06d4500
+--- /dev/null
++++ b/repro_debug.py
+@@ -0,0 +1,32 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from typing import List
++from fastapi.dependencies.utils import is_sequence_field
++
++app = FastAPI()
++
++@app.post("/test")
++async def test(data: Json[List[str]] = Form(...)):
++    return {"data": data}
++
++# Find the field for 'data'
++for route in app.routes:
++    if hasattr(route, "endpoint"):
++        import inspect
++        sig = inspect.signature(route.endpoint)
++        for name, param in sig.parameters.items():
++            if name == "data":
++                # This is a bit hacky, but let's try to find the ModelField
++                # In a real request, FastAPI creates these.
++                # Let's see if we can find it in the route's dependencies.
++                print(f"Param: {name}, Default: {param.default}")
++
++# Let's try to reproduce the is_sequence_field call directly
++from fastapi._compat.v2 import ModelField
++from pydantic.fields import FieldInfo
++from fastapi import params
++
++field_info = FieldInfo(annotation=Json[List[str]], default=params.Form(...))
++field = ModelField(field_info=field_info, name="data")
++print(f"is_sequence_field: {is_sequence_field(field)}")
++print(f"annotation: {field.field_info.annotation}")
+diff --git a/repro_fastapi.py b/repro_fastapi.py
+new file mode 100644
+index 00000000..4c20db47
+--- /dev/null
++++ b/repro_fastapi.py
+@@ -0,0 +1,28 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from typing import Annotated, List
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/upload")
++def upload(
++    tags: Annotated[Json[List[str]], Form()]
++):
++    return {"tags": tags}
++
++client = TestClient(app)
++
++def test_json_form():
++    # Client sends JSON string in form field
++    response = client.post("/upload", data={"tags": '["abc", "def"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"tags": ["abc", "def"]}
++
++if __name__ == "__main__":
++    try:
++        test_json_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
+diff --git a/repro_json.py b/repro_json.py
+new file mode 100644
+index 00000000..222b7ae1
+--- /dev/null
++++ b/repro_json.py
+@@ -0,0 +1,12 @@
++from typing import Annotated, List
++from pydantic import Json
++from fastapi._compat.v2 import ModelField, is_sequence_field
++from pydantic.fields import FieldInfo
++
++# Try with Json[List[str]] directly
++field = ModelField(
++    field_info=FieldInfo(annotation=Json[List[str]]),
++    name="items"
++)
++
++print(f"Is sequence field: {is_sequence_field(field)}")
+diff --git a/repro_real.py b/repro_real.py
+new file mode 100644
+index 00000000..fd610739
+--- /dev/null
++++ b/repro_real.py
+@@ -0,0 +1,28 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from typing import List
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/test")
++async def test(data: Json[List[str]] = Form(...)):
++    return {"data": data}
++
++client = TestClient(app)
++
++def test_json_list():
++    # Send a JSON list as a form field
++    response = client.post("/test", data={"data": '["a", "b"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json()["data"] == ["a", "b"]
++
++if __name__ == "__main__":
++    try:
++        test_json_list()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
