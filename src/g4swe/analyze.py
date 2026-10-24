@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -71,19 +72,63 @@ def _median(xs):
     return statistics.median(xs) if xs else float("nan")
 
 
-def report(rows: list[dict]) -> str:
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval for a proportion k/n (well-behaved for small n and rates near 0 or 1)."""
+    if n == 0:
+        return float("nan"), float("nan")
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def mcnemar_exact(b: int, c: int) -> float:
+    """Two-sided exact McNemar p-value from the discordant pairs (b: only A solved, c: only B solved)."""
+    n = b + c
+    if n == 0:
+        return 1.0
+    tail = sum(math.comb(n, i) for i in range(0, min(b, c) + 1)) / 2 ** n
+    return min(1.0, 2 * tail)
+
+
+def paired(rows: list[dict], base: str) -> list[str]:
+    """Compare each config with the baseline on the tasks both ran (same tasks, so pair them)."""
+    res = {(r["agent"], r["instance_id"]): bool(r["resolved"]) for r in rows}
+    cfgs = sorted({r["agent"] for r in rows} - {base})
+    if base not in {r["agent"] for r in rows} or not cfgs:
+        return []
+    out = ["", f"## Paired comparison with {base}", "",
+           "Same tasks for both configs. *Only base* / *only config*: tasks solved by one and not the other.",
+           "p: exact McNemar test on those discordant tasks (p < 0.05 suggests a real difference).", "",
+           f"| Config | Tasks paired | Both | Only {base} | Only config | Neither | Δ resolved | p |",
+           "|---|---|---|---|---|---|---|---|"]
+    for c in cfgs:
+        tasks = sorted(t for (a, t) in res if a == c and (base, t) in res)
+        both = sum(res[(base, t)] and res[(c, t)] for t in tasks)
+        only_b = sum(res[(base, t)] and not res[(c, t)] for t in tasks)
+        only_c = sum(res[(c, t)] and not res[(base, t)] for t in tasks)
+        neither = len(tasks) - both - only_b - only_c
+        out.append(f"| {c} | {len(tasks)} | {both} | {only_b} | {only_c} | {neither} | "
+                   f"{only_c - only_b:+d} | {mcnemar_exact(only_b, only_c):.2f} |")
+    return out
+
+
+def report(rows: list[dict], base: str = "k0") -> str:
     by_cfg: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         by_cfg[r["agent"]].append(r)
     cfgs = sorted(by_cfg)
     out = ["## Per config", "",
-           "| Config | Tasks | Resolved | Rate | Mean tool calls | Median time (s) | Mean tokens | Mean first source edit (call #) | Errors |",
-           "|---|---|---|---|---|---|---|---|---|"]
+           "| Config | Tasks | Resolved | Rate (95% CI) | Used any graph tool | Mean tool calls | Median time (s) | Mean tokens | Mean first source edit (call #) | Errors |",
+           "|---|---|---|---|---|---|---|---|---|---|"]
     for c in cfgs:
         rs = by_cfg[c]
         res = sum(r["resolved"] for r in rs)
+        lo, hi = wilson(res, len(rs))
+        graph_runs = sum(1 for r in rs if any(r.get("tools", Counter()).get(t) for t in GRAPH_TOOLS))
         out.append(
-            f"| {c} | {len(rs)} | {res} | {res / len(rs):.0%} | {_mean(r.get('n_calls') for r in rs):.1f} | "
+            f"| {c} | {len(rs)} | {res} | {res / len(rs):.0%} ({lo:.0%}–{hi:.0%}) | {graph_runs}/{len(rs)} | "
+            f"{_mean(r.get('n_calls') for r in rs):.1f} | "
             f"{_median(r['duration_seconds'] for r in rs):.0f} | {_mean(r.get('tokens') for r in rs):,.0f} | "
             f"{_mean(r.get('first_edit') for r in rs):.1f} | {sum(bool(r.get('error')) for r in rs)} |")
 
@@ -102,6 +147,8 @@ def report(rows: list[dict]) -> str:
         cells.append(f"{_mean(sub):.1f} ({sum(1 for x in sub if x)}/{len(rs)})")
         out.append(f"| {c} | " + " | ".join(cells) + " |")
 
+    out += paired(rows, base)
+
     tasks = sorted({r["instance_id"] for r in rows})
     grid = {(r["instance_id"], r["agent"]): r for r in rows}
     out += ["", "## Task x config", "", "✅ resolved, ❌ not resolved, · not run (tool calls in brackets)", "",
@@ -119,8 +166,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dirs", nargs="+", type=Path, help="results directories (each with runs.jsonl)")
     ap.add_argument("--out", type=Path, help="also write the Markdown here")
+    ap.add_argument("--base", default="k0", help="baseline config for paired comparisons")
     args = ap.parse_args()
-    md = report(load(args.dirs))
+    md = report(load(args.dirs), args.base)
     print(md)
     if args.out:
         args.out.write_text(md, encoding="utf-8")
