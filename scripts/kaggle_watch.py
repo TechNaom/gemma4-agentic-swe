@@ -3,7 +3,7 @@
 Run by .github/workflows/kaggle-watch.yml every 30 minutes. For each kernel in ops/kaggle-watch.txt:
   - still running -> nothing to do
   - finished (complete or error) and this run (its lastRunTime) not yet processed ->
-      download notebook.log and results.tgz, unpack results into experiments/<kernel>-<run time>/,
+      download notebook.log and the raw result files into experiments/<kernel>-<run time>/,
       run g4swe.analyze over them, and append a section to the report file.
 Processed runs are remembered in ops/kaggle-watch-state.json, so each run is reported once.
 
@@ -18,7 +18,6 @@ import json
 import re
 import subprocess
 import sys
-import tarfile
 import tempfile
 from pathlib import Path
 
@@ -52,19 +51,16 @@ def process(kernel: str, run_time: str, state: str) -> str:
     dest = ROOT / "experiments" / f"{kernel.split('/')[-1]}-{stamp}"
     dest.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        kaggle("kernels", "output", kernel, "-p", tmp, "--file-pattern", r"notebook\.log|results\.tgz|vllm\.log")
+        # Raw files rather than results.tgz: run_eval writes each task's result as it finishes, so a session
+        # cut short (quota, 12-hour limit) still yields every completed task. The tgz is only packed per config.
+        kaggle("kernels", "output", kernel, "-p", tmp, "--file-pattern", r"notebook\.log|vllm\.log|repo/results/.*")
         tmp_path = Path(tmp)
         for name in ("notebook.log", "vllm.log"):
             if (tmp_path / name).exists():
                 (dest / name).write_bytes((tmp_path / name).read_bytes())
-        tgz = tmp_path / "results.tgz"
-        if tgz.exists():
-            with tarfile.open(tgz) as tf:
-                tf.extractall(tmp_path / "x", filter="data")
-            for run_dir in sorted((tmp_path / "x" / "results").glob("*")):
-                if run_dir.is_dir():
-                    target = dest / run_dir.name
-                    subprocess.run(["cp", "-r", str(run_dir), str(target)], check=True)
+        for run_dir in sorted((tmp_path / "repo" / "results").glob("*")):
+            if run_dir.is_dir():
+                subprocess.run(["cp", "-r", str(run_dir), str(dest / run_dir.name)], check=True)
 
     lines = [f"## `{kernel}`, run of {run_time} UTC: **{state}**", ""]
     run_dirs = sorted(p for p in dest.iterdir() if (p / "runs.jsonl").exists())
