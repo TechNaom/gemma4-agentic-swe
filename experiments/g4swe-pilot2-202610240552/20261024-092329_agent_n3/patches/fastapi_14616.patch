@@ -1,0 +1,135 @@
+diff --git a/debug_json_form.py b/debug_json_form.py
+new file mode 100644
+index 00000000..6f4194a9
+--- /dev/null
++++ b/debug_json_form.py
+@@ -0,0 +1,38 @@
++from typing import Annotated, List
++from fastapi import FastAPI, Form
++from pydantic import Json
++from fastapi.testclient import TestClient
++from fastapi.dependencies.utils import _get_multidict_value
++from fastapi._compat.v2 import ModelField
++from pydantic.fields import FieldInfo
++from starlette.datastructures import ImmutableMultiDict
++
++app = FastAPI()
++
++@app.post("/test")
++async def test(data: Annotated[Json[List[str]], Form()]):
++    return {"data": data}
++
++def test_json_form():
++    # Simulate what FastAPI does
++    # Create a ModelField for Annotated[Json[List[str]], Form()]
++    
++    from pydantic import BaseModel
++    class Model(BaseModel):
++        data: Annotated[Json[List[str]], Form()]
++    
++    field_info = Model.model_fields['data']
++    field = ModelField(field_info=field_info, name='data')
++    
++    print(f"Field annotation: {field.field_info.annotation}")
++    
++    from fastapi._compat.v2 import is_sequence_field
++    print(f"Is sequence field: {is_sequence_field(field)}")
++    
++    values = ImmutableMultiDict([('data', '["abc", "def"]')])
++    value = _get_multidict_value(field, values)
++    print(f"Value from _get_multidict_value: {value}")
++    print(f"Value type: {type(value)}")
++
++if __name__ == "__main__":
++    test_json_form()
+diff --git a/debug_sequence.py b/debug_sequence.py
+new file mode 100644
+index 00000000..2f2cef28
+--- /dev/null
++++ b/debug_sequence.py
+@@ -0,0 +1,31 @@
++from typing import Annotated, List
++from fastapi import FastAPI, Form
++from pydantic import Json
++from fastapi.testclient import TestClient
++from fastapi._compat.shared import field_annotation_is_sequence
++from pydantic.fields import FieldInfo
++
++app = FastAPI()
++
++@app.post("/test")
++async def test(data: Annotated[Json[List[str]], Form()]):
++    return {"data": data}
++
++# Let's find the field info for 'data'
++# We can get it from the app's routes
++for route in app.routes:
++    if hasattr(route, "endpoint"):
++        # This is a bit hacky but should work for this reproduction
++        # In FastAPI, the endpoint's signature is used to create the model
++        import inspect
++        sig = inspect.signature(route.endpoint)
++        print(f"Route: {route.path}, Params: {sig.parameters}")
++        for name, param in sig.parameters.items():
++            print(f"Param: {name}, Annotation: {param.annotation}")
++            # We want to see what field_annotation_is_sequence returns for this annotation
++            print(f"Is sequence: {field_annotation_is_sequence(param.annotation)}")
++
++if __name__ == "__main__":
++    # We need to make sure the app is initialized so that the routes are processed
++    # But the routes are processed when the app is created.
++    pass
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index e5ac51d5..98806276 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -731,7 +731,21 @@ def _get_multidict_value(
+ ) -> Any:
+     alias = alias or get_validation_alias(field)
+     if is_sequence_field(field) and isinstance(values, (ImmutableMultiDict, Headers)):
+-        value = values.getlist(alias)
++        # Pydantic v2: Json fields are marked in metadata.
++        # If it's a Json field, we should use get() instead of getlist()
++        # because the JSON string itself represents the sequence.
++        is_json_field = False
++        if hasattr(field.field_info, "metadata") and field.field_info.metadata:
++            from pydantic import Json
++            print(f"DEBUG: metadata={field.field_info.metadata}, Json={Json}")
++            print(f"DEBUG: metadata type={type(field.field_info.metadata)}, Json type={type(Json)}")
++            for item in field.field_info.metadata:
++                print(f"DEBUG: item={item}, item_type={type(item)}")
++            if Json in field.field_info.metadata:
++                is_json_field = True
++        
++        print(f"DEBUG: field={field}, is_sequence={is_sequence_field(field)}, is_json={is_json_field}, alias={alias}")
++        value = values.getlist(alias) if not is_json_field else values.get(alias, None)
+     else:
+         value = values.get(alias, None)
+     if (
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..cf696c8f
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,21 @@
++from typing import Annotated, List
++from fastapi import FastAPI, Form
++from pydantic import Json
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/test")
++async def test(data: Annotated[Json[List[str]], Form()]):
++    return {"data": data}
++
++client = TestClient(app)
++
++def test_json_form():
++    # This is the case that is failing
++    response = client.post("/test", data={"data": '["abc", "def"]'})
++    print(f"Response: {response.json()}")
++    print(f"Status Code: {response.status_code}")
++
++if __name__ == "__main__":
++    test_json_form()

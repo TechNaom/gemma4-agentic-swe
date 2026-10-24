@@ -1,0 +1,49 @@
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index f620ced5..55f912d9 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -469,8 +469,8 @@ class APIRoute(routing.Route):
+     ) -> None:
+         self.path = path
+         self.endpoint = endpoint
++        return_annotation = get_typed_return_annotation(endpoint)
+         if isinstance(response_model, DefaultPlaceholder):
+-            return_annotation = get_typed_return_annotation(endpoint)
+             if lenient_issubclass(return_annotation, Response):
+                 response_model = None
+             else:
+@@ -509,6 +509,10 @@ class APIRoute(routing.Route):
+         # normalize enums e.g. http.HTTPStatus
+         if isinstance(status_code, IntEnum):
+             status_code = int(status_code)
++        if status_code is None and return_annotation is None:
++            signature = inspect.signature(endpoint)
++            if signature.return_annotation is not inspect.Signature.empty:
++                status_code = 204
+         self.status_code = status_code
+         if self.response_model:
+             assert is_body_allowed_for_status_code(status_code), (
+diff --git a/repro_fastapi.py b/repro_fastapi.py
+new file mode 100644
+index 00000000..953ee927
+--- /dev/null
++++ b/repro_fastapi.py
+@@ -0,0 +1,18 @@
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/none", status_code=204)
++def read_none() -> None:
++    return None
++
++client = TestClient(app)
++
++def test_none_return():
++    response = client.get("/none")
++    print(f"Status code: {response.status_code}")
++    print(f"Body: {response.text}")
++
++if __name__ == "__main__":
++    test_none_return()

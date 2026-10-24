@@ -1,0 +1,48 @@
+diff --git a/check_json.py b/check_json.py
+new file mode 100644
+index 00000000..1266efdf
+--- /dev/null
++++ b/check_json.py
+@@ -0,0 +1,13 @@
++from pydantic import Json, BaseModel
++from typing import List
++import pydantic
++
++class Model(BaseModel):
++    data: Json[List[str]]
++
++field = Model.model_fields['data']
++print(f"Annotation: {field.annotation}")
++print(f"Metadata: {field.metadata}")
++for m in field.metadata:
++    print(f"Metadata item: {m}, type: {type(m)}")
++
+diff --git a/check_json_type.py b/check_json_type.py
+new file mode 100644
+index 00000000..356fc149
+--- /dev/null
++++ b/check_json_type.py
+@@ -0,0 +1,4 @@
++from pydantic import Json
++import pydantic
++print(f"Is Json instance of pydantic.types.Json? {isinstance(Json, pydantic.types.Json)}")
++print(f"Is Json == pydantic.types.Json? {Json == pydantic.types.Json}")
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index e5ac51d5..c9f7dbd9 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -731,7 +731,13 @@ def _get_multidict_value(
+ ) -> Any:
+     alias = alias or get_validation_alias(field)
+     if is_sequence_field(field) and isinstance(values, (ImmutableMultiDict, Headers)):
+-        value = values.getlist(alias)
++        # Check if it's a Json field
++        is_json = False
++        if hasattr(field.field_info, "metadata") and field.field_info.metadata:
++            from pydantic.types import Json
++            if Json in field.field_info.metadata:
++                is_json = True
++        value = values.get(alias, None) if is_json else values.getlist(alias)
+     else:
+         value = values.get(alias, None)
+     if (

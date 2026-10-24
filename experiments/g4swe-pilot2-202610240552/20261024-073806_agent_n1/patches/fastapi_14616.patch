@@ -1,0 +1,78 @@
+diff --git a/inspect_json.py b/inspect_json.py
+new file mode 100644
+index 00000000..3917d2c5
+--- /dev/null
++++ b/inspect_json.py
+@@ -0,0 +1,8 @@
++from pydantic import Json
++from typing import get_origin, get_args
++import typing
++
++print(f"Json: {Json}")
++print(f"Origin of Json[list[str]]: {get_origin(Json[list[str]])}")
++print(f"Args of Json[list[str]]: {get_args(Json[list[str]])}")
++print(f"Is Json a subclass of Sequence? {issubclass(Json, typing.Sequence) if isinstance(Json, type) else 'Not a type'}")
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..44b37dfc
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,21 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from typing import List
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/")
++async def root(tags: Json[List[str]] = Form()):
++    return {"tags": tags}
++
++client = TestClient(app)
++
++def test_json_form():
++    response = client.post("/", data={"tags": '["abc", "def"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"tags": ["abc", "def"]}
++
++if __name__ == "__main__":
++    test_json_form()
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..00917532
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,31 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from typing import List
++from fastapi.testclient import TestClient
++from fastapi.dependencies.utils import _get_multidict_value
++from fastapi._compat import ModelField
++import pprint
++
++app = FastAPI()
++
++@app.post("/test")
++async def test_endpoint(tags: Json[List[str]] = Form()):
++    return {"tags": tags}
++
++client = TestClient(app)
++
++def test_json_form():
++    # The input is a JSON string representing a list of strings
++    json_data = '["abc", "def"]'
++    # We send it as a form field
++    response = client.post("/test", data={"tags": json_data})
++    print("Response:", response.json())
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    try:
++        test_json_form()
++    except Exception as e:
++        print(e)
++        import traceback
++        traceback.print_exc()

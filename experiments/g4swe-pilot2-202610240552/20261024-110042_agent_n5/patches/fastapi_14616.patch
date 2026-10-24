@@ -1,0 +1,153 @@
+diff --git a/check_json.py b/check_json.py
+new file mode 100644
+index 00000000..5e129ee5
+--- /dev/null
++++ b/check_json.py
+@@ -0,0 +1,6 @@
++from typing import List, Sequence
++from pydantic import Json
++from collections.abc import Sequence as ABCSequence
++
++print(f"Is Json a subclass of Sequence? {issubclass(Json, Sequence)}")
++print(f"Is Json a subclass of ABCSequence? {issubclass(Json, ABCSequence)}")
+diff --git a/fastapi/_compat/shared.py b/fastapi/_compat/shared.py
+index 68b9bbdf..1bd7072f 100644
+--- a/fastapi/_compat/shared.py
++++ b/fastapi/_compat/shared.py
+@@ -64,15 +64,19 @@ def _annotation_is_sequence(annotation: Union[type[Any], None]) -> bool:
+ 
+ 
+ def field_annotation_is_sequence(annotation: Union[type[Any], None]) -> bool:
++    print(f"DEBUG: field_annotation_is_sequence(annotation={annotation})")
+     origin = get_origin(annotation)
++    print(f"DEBUG: origin={origin}")
+     if origin is Union or origin is UnionType:
+         for arg in get_args(annotation):
+             if field_annotation_is_sequence(arg):
+                 return True
+         return False
+-    return _annotation_is_sequence(annotation) or _annotation_is_sequence(
++    res = _annotation_is_sequence(annotation) or _annotation_is_sequence(
+         get_origin(annotation)
+     )
++    print(f"DEBUG: result={res}")
++    return res
+ 
+ 
+ def value_is_sequence(value: Any) -> bool:
+diff --git a/fastapi/_compat/v2.py b/fastapi/_compat/v2.py
+index dae78a32..6bc50248 100644
+--- a/fastapi/_compat/v2.py
++++ b/fastapi/_compat/v2.py
+@@ -404,6 +404,12 @@ def is_scalar_field(field: ModelField) -> bool:
+ 
+ 
+ def is_sequence_field(field: ModelField) -> bool:
++    from dataclasses import asdict
++    print(f"DEBUG: is_sequence_field field.field_info.annotation={field.field_info.annotation}")
++    try:
++        print(f"DEBUG: is_sequence_field asdict(field.field_info)={asdict(field.field_info)}")
++    except Exception as e:
++        print(f"DEBUG: is_sequence_field asdict failed: {e}")
+     return shared.field_annotation_is_sequence(field.field_info.annotation)
+ 
+ 
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index e5ac51d5..7614f10c 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -730,6 +730,8 @@ def _get_multidict_value(
+     field: ModelField, values: Mapping[str, Any], alias: Union[str, None] = None
+ ) -> Any:
+     alias = alias or get_validation_alias(field)
++    print(f"DEBUG: _get_multidict_value field.field_info.annotation={field.field_info.annotation}")
++    print(f"DEBUG: is_sequence_field={is_sequence_field(field)}")
+     if is_sequence_field(field) and isinstance(values, (ImmutableMultiDict, Headers)):
+         value = values.getlist(alias)
+     else:
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..6b29332e
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,9 @@
++from typing import Annotated, List, Sequence
++from pydantic import Json
++from typing_extensions import get_origin, get_args
++from fastapi._compat.shared import field_annotation_is_sequence
++
++print(f"Json[List[str]]: {field_annotation_is_sequence(Json[List[str]])}")
++print(f"List[str]: {field_annotation_is_sequence(List[str])}")
++print(f"str: {field_annotation_is_sequence(str)}")
++print(f"get_origin(Json[List[str]]): {get_origin(Json[List[str]])}")
+diff --git a/repro_fastapi.py b/repro_fastapi.py
+new file mode 100644
+index 00000000..31f36401
+--- /dev/null
++++ b/repro_fastapi.py
+@@ -0,0 +1,30 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from typing import Annotated, List
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/upload")
++def upload(
++    tags: Annotated[Json[List[str]], Form()]
++):
++    return {"tags": tags}
++
++client = TestClient(app)
++
++def test_json_form():
++    # Client sends JSON string in a form field
++    response = client.post("/upload", data={"tags": '["abc", "def"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"tags": ["abc", "def"]}
++
++if __name__ == "__main__":
++    try:
++        test_json_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..c7b23f24
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, Form
++from fastapi.testclient import TestClient
++from pydantic import Json
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test")
++async def test_endpoint(data: Json[List[str]] = Form(...)):
++    return {"data": data}
++
++client = TestClient(app)
++
++def test_json_list_form():
++    # The input is a JSON string representing a list
++    json_data = '["abc", "def"]'
++    response = client.post("/test", data={"data": json_data})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json()["data"] == ["abc", "def"]
++
++if __name__ == "__main__":
++    try:
++        test_json_list_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()

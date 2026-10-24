@@ -1,0 +1,91 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..208fc629
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,43 @@
++from fastapi import FastAPI, Form, File, UploadFile, Body
++from fastapi.testclient import TestClient
++from typing import Annotated
++
++app = FastAPI()
++
++@app.post("/form_file_body")
++async def form_file_body(
++    form_data: Annotated[str, Form(...)], 
++    file: Annotated[UploadFile, File(...)], 
++    body: Annotated[str, Body(...)]
++):
++    return {"form_data": form_data, "file": file.filename, "body": body}
++
++@app.post("/file_form_body")
++async def file_form_body(
++    file: Annotated[UploadFile, File(...)], 
++    form_data: Annotated[str, Form(...)], 
++    body: Annotated[str, Body(...)]
++):
++    return {"form_data": form_data, "file": file.filename, "body": body}
++
++client = TestClient(app)
++
++def test_form_file_body():
++    response = client.post(
++        "/form_file_body",
++        data={"form_data": "hello", "body": "world"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"form_file_body: {response.status_code} {response.json()}")
++
++def test_file_form_body():
++    response = client.post(
++        "/file_form_body",
++        data={"form_data": "hello", "body": "world"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"file_form_body: {response.status_code} {response.json()}")
++
++if __name__ == "__main__":
++    test_form_file_body()
++    test_file_form_body()
+diff --git a/repro.py` b/repro.py`
+new file mode 100644
+index 00000000..99aa6b1d
+--- /dev/null
++++ b/repro.py`
+@@ -0,0 +1,36 @@
++from fastapi import FastAPI, Form, File, UploadFile
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/form_then_file")
++async def form_then_file(form_data: str = Form(...), file: UploadFile = File(...)):
++    return {"form_data": form_data, "file": file.filename}
++
++@app.post("/file_then_form")
++async def file_then_form(file: UploadFile = File(...), form_data: str = Form(...)):
++    return {"form_data": form_data, "file": file.filename}
++
++client = TestClient(app)
++
++def test_form_then_file():
++    response = client.post(
++        "/form_then_file",
++        data={"form_data": "hello"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"form_then_file: {response.status_code} {response.json()}")
++    assert response.status_code == 200
++
++def test_file_then_form():
++    response = client.post(
++        "/file_then_form",
++        data={"form_data": "hello"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"file_then_form: {response.status_code} {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    test_form_then_file()
++    test_file_then_form()

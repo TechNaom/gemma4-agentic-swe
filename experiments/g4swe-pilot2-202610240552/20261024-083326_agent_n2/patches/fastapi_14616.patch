@@ -1,0 +1,131 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index e5ac51d5..5d9b8077 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -730,7 +730,15 @@ def _get_multidict_value(
+     field: ModelField, values: Mapping[str, Any], alias: Union[str, None] = None
+ ) -> Any:
+     alias = alias or get_validation_alias(field)
+-    if is_sequence_field(field) and isinstance(values, (ImmutableMultiDict, Headers)):
++    is_json_field = False
++    if hasattr(field.field_info, "metadata") and field.field_info.metadata:
++        from pydantic.types import Json
++        print(f"DEBUG: metadata={field.field_info.metadata}")
++        print(f"DEBUG: Json type={Json}")
++        if Json in field.field_info.metadata:
++            is_json_field = True
++    print(f"DEBUG: is_json_field={is_json_field}, is_sequence_field={is_sequence_field(field)}")
++    if is_sequence_field(field) and not is_json_field and isinstance(values, (ImmutableMultiDict, Headers)):
+         value = values.getlist(alias)
+     else:
+         value = values.get(alias, None)
+diff --git a/inspect_json.py b/inspect_json.py
+new file mode 100644
+index 00000000..24ccb511
+--- /dev/null
++++ b/inspect_json.py
+@@ -0,0 +1,16 @@
++from pydantic import Json, create_model
++from pydantic.fields import FieldInfo
++from typing import Annotated
++import pprint
++
++# Pydantic v2
++model = create_model(
++    "TestModel",
++    tags=(Json[list[str]], ...)
++)
++
++field = model.model_fields["tags"]
++print("Field Info:")
++pprint.pprint(field)
++print("\nMetadata:")
++pprint.pprint(getattr(field, "metadata", "No metadata"))
+diff --git a/inspect_json_type.py b/inspect_json_type.py
+new file mode 100644
+index 00000000..744f1d8b
+--- /dev/null
++++ b/inspect_json_type.py
+@@ -0,0 +1,3 @@
++from pydantic import Json
++print(f"Json type: {type(Json)}")
++print(f"Json: {Json}")
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..ecab4614
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,38 @@
++from fastapi import FastAPI, Form
++from fastapi.testclient import TestClient
++from pydantic import Json
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test")
++async def test_endpoint(data: Json[List[str]] = Form(...)):
++    return {"data": data}
++
++client = TestClient(app)
++
++def test_json_list_form():
++    # This should be a JSON string representing a list of strings
++    response = client.post("/test", data={"data": '["a", "b"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"data": ["a", "b"]}
++
++def test_json_list_form_invalid():
++    # This should be invalid JSON
++    response = client.post("/test", data={"data": 'not a json'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 422
++
++if __name__ == "__main__":
++    try:
++        test_json_list_form()
++        print("test_json_list_form passed")
++    except Exception as e:
++        print(f"test_json_list_form failed: {e}")
++
++    try:
++        test_json_list_form_invalid()
++        print("test_json_list_form_invalid passed")
++    except Exception as e:
++        print(f"test_json_list_form_invalid failed: {e}")
+diff --git a/reproduction_script.py b/reproduction_script.py
+new file mode 100644
+index 00000000..51811de4
+--- /dev/null
++++ b/reproduction_script.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, Form
++from pydantic import Json
++from fastapi.testclient import TestClient
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test")
++async def test_endpoint(data: Json[List[str]] = Form(...)):
++    print(f"Data type: {type(data)}, Data value: {data}")
++    return {"data": data}
++
++client = TestClient(app)
++
++def test_json_form():
++    # This should work: data is a JSON string representing a list of strings
++    response = client.post("/test", data={"data": '["abc", "def"]'})
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"data": ["abc", "def"]}
++
++if __name__ == "__main__":
++    try:
++        test_json_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import traceback
++        traceback.print_exc()
