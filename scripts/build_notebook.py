@@ -5,6 +5,7 @@
     python scripts/build_notebook.py gpu [task ids...]      # agent runs on the Kaggle-hosted competition model (GPU)
     python scripts/build_notebook.py pilot                  # all six configs on experiments/pilot_tasks.txt (GPU)
     python scripts/build_notebook.py pilot2                 # k0, k4 and nudge configs n1-n5 on the pilot tasks (GPU)
+    python scripts/build_notebook.py ablation abl1 k0,n4    # given configs on experiments/ablation_tasks.txt (GPU)
     python scripts/build_notebook.py faults                 # planted-bug patches verified on the valid tasks (CPU)
 
 audit/agent write notebooks/smoke (kernel g4swe-smoke); gpu and faults get their own notebook and kernel.
@@ -14,6 +15,10 @@ import sys
 from pathlib import Path
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "audit"
+# ablation <run-name> <cfg,cfg,...> [task-file]: e.g. `ablation abl1 k0,n4` -> kernel g4swe-abl1
+if MODE == "ablation":
+    ABL_NAME, ABL_CONFIGS = sys.argv[2], sys.argv[3].split(",")
+    ABL_TASKS = sys.argv[4] if len(sys.argv) > 4 else "experiments/ablation_tasks.txt"
 GPU_TASKS = " ".join(sys.argv[2:]) or "rich_2725 fastapi_14786"
 GPU_MODEL = "gemma-4-31b-it-qat-w4a16-ct"
 USER = "manoharpapasani"
@@ -125,18 +130,21 @@ PILOT_CONFIGS = {
 }
 
 
-def pilot_run(configs: list[str]) -> str:
-    return f"""# Configs {', '.join(configs)} on the pilot tasks, one vLLM server. Results are packed after every
+def pilot_run(configs: list[str], task_file: str = "experiments/pilot_tasks.txt") -> str:
+    return f"""# Configs {', '.join(configs)} on {task_file}, one vLLM server. Results are packed after every
 # config, so finished configs survive if the session hits its time limit.
 for k in {configs!r}:
     sh(f'python -m g4swe.run_eval --mode agent --backend local --agent agents/{{k}} '
-       f'--data-dir {{DATA_DIR}} --task-file experiments/pilot_tasks.txt --max-time-minutes 15', check=False)
+       f'--data-dir {{DATA_DIR}} --task-file {task_file} --max-time-minutes 15', check=False)
     sh('tar czf /kaggle/working/results.tgz results')"""
 
 
-if MODE == "gpu" or MODE in PILOT_CONFIGS:
-    name, kernel = ("gpu", "g4swe-gpu") if MODE == "gpu" else (MODE, f"g4swe-{MODE}")
-    run_cell = pilot_run(PILOT_CONFIGS[MODE]) if MODE in PILOT_CONFIGS else (
+if MODE == "gpu" or MODE in PILOT_CONFIGS or MODE == "ablation":
+    if MODE == "ablation":
+        name, kernel = ABL_NAME, f"g4swe-{ABL_NAME}"
+    else:
+        name, kernel = ("gpu", "g4swe-gpu") if MODE == "gpu" else (MODE, f"g4swe-{MODE}")
+    run_cell = pilot_run(ABL_CONFIGS, ABL_TASKS) if MODE == "ablation" else pilot_run(PILOT_CONFIGS[MODE]) if MODE in PILOT_CONFIGS else (
         f"sh(f'python -m g4swe.run_eval --mode agent --backend local --agent agents/k0 "
         f"--data-dir {{DATA_DIR}} --task-ids {GPU_TASKS}', check=False)")
     cells = [
