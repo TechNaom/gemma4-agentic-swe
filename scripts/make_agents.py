@@ -1,6 +1,8 @@
 """Generate one self-contained harness submission directory per ablation config.
 
-Every config shares the same system prompt, sampling and budget; only the tool list changes.
+k configs share one tool-neutral prompt; only the tool list changes (does *having* a tool help?).
+n configs ("nudge") have the same tools as k1-k5 plus a prompt section telling the agent to locate code with
+them first (does *using* a tool help?). The pilot showed k agents called graph tools in only 8% of runs.
 The harness blocks `!include` paths outside a submission root, so each config gets its own copy.
 
     python scripts/make_agents.py --model gemma-4-31b-it
@@ -23,12 +25,31 @@ CONFIGS = {
     "k3": {"tools": ["get_code_subgraph"], "analyzer": False, "about": "+ induced subgraph"},
     "k4": {"tools": GRAPH_TOOLS, "analyzer": False, "about": "+ all graph tools"},
     "k5": {"tools": GRAPH_TOOLS, "analyzer": True, "about": "+ all graph tools + analyzer sub-agent"},
+    "n1": {"tools": ["get_code_neighbors"], "analyzer": False, "nudge": True, "about": "k1 + use-the-tools prompt"},
+    "n2": {"tools": ["search_similar_code"], "analyzer": False, "nudge": True, "about": "k2 + use-the-tools prompt"},
+    "n3": {"tools": ["get_code_subgraph"], "analyzer": False, "nudge": True, "about": "k3 + use-the-tools prompt"},
+    "n4": {"tools": GRAPH_TOOLS, "analyzer": False, "nudge": True, "about": "k4 + use-the-tools prompt"},
+    "n5": {"tools": GRAPH_TOOLS, "analyzer": True, "nudge": True, "about": "k5 + use-the-tools prompt"},
 }
+
+NUDGE = """
+
+## Locate code with the code-intelligence tools first
+
+This repository has pre-built code-intelligence tools: {tools}. Before any `read_file`, `grep` or `find`, use
+them to find the symbols involved in the issue. Pass dotted names or short symbol names taken from the problem
+statement (for example `module.Class.method` or `function_name`). Then read only the files and line ranges they
+point you to. Fall back to `grep` only if the tools return nothing useful.
+"""
+NUDGE_ANALYZER = """
+Start by calling `code_analyzer_agent` with the issue summary; it uses these tools to report the files, lines and
+root cause. Then make the fix yourself.
+"""
 
 SAMPLING = """\
 temperature: 0.2
 top_p: 0.95
-max_output_tokens: 16384
+max_output_tokens: 4096  # 16384 left only half the 32k context for input; pilot overflowed 7x
 """
 
 EVAL_CONFIG = """\
@@ -50,7 +71,12 @@ def build(name: str, cfg: dict, model: str) -> None:
         shutil.rmtree(d)
     (d / "prompts").mkdir(parents=True)
     (d / "configs").mkdir()
-    shutil.copy(TEMPLATE / "system.md", d / "prompts" / "system.md")
+    prompt = (TEMPLATE / "system.md").read_text(encoding="utf-8")
+    if cfg.get("nudge"):
+        prompt = prompt.rstrip() + NUDGE.format(tools=", ".join(f"`{t}`" for t in cfg["tools"]))
+        if cfg["analyzer"]:
+            prompt += NUDGE_ANALYZER
+    (d / "prompts" / "system.md").write_text(prompt, encoding="utf-8", newline="\n")
     (d / "configs" / "sampling.yaml").write_text(SAMPLING, encoding="utf-8")
     (d / "eval_config.yaml").write_text(EVAL_CONFIG, encoding="utf-8")
 
