@@ -1,0 +1,86 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..ddd44cba
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,11 @@
++from rich.cells import split_graphemes
++
++try:
++    print("Testing with character width 0 at the start...")
++    # \x01 is a control character, should have width 0
++    split_graphemes("\x01")
++    print("Finished successfully")
++except Exception as e:
++    print(f"Caught exception: {e}")
++except KeyboardInterrupt:
++    print("Infinite loop detected!")
+diff --git a/reproduce_zwj.py b/reproduce_zwj.py
+new file mode 100644
+index 00000000..444c8c8b
+--- /dev/null
++++ b/reproduce_zwj.py
+@@ -0,0 +1,24 @@
++from rich.cells import split_graphemes, cell_len
++
++def test_zwj_skipping():
++    # ZWJ followed by a character
++    text = "\u200d" + "A"
++    spans, width = split_graphemes(text)
++    print(f"Text: {repr(text)}")
++    print(f"Spans: {spans}, Width: {width}")
++    # Expected: spans should contain 'A'
++    # Current: spans is [], width is 0
++
++    text2 = "A" + "\u200d" + "B"
++    spans2, width2 = split_graphemes(text2)
++    print(f"Text: {repr(text2)}")
++    print(f"Spans: {spans2}, Width: {width2}")
++    # Expected: spans should contain 'A' and 'B' (joined or not)
++    # Current: spans is [(0, 3, 1)], width is 1 (B is skipped)
++
++    print(f"Cell len of {repr(text2)}: {cell_len(text2)}")
++    # Expected: 2
++    # Current: 1
++
++if __name__ == "__main__":
++    test_zwj_skipping()
+diff --git a/rich/cells.py b/rich/cells.py
+index 31165957..3a516dd6 100644
+--- a/rich/cells.py
++++ b/rich/cells.py
+@@ -146,6 +146,7 @@ def _cell_len(text: str, unicode_version: str) -> int:
+         if character in SPECIAL:
+             if character == "\u200d":
+                 index += 1
++                last_measured_character = None
+             elif last_measured_character:
+                 total_width += last_measured_character in cell_table.narrow_to_wide
+                 last_measured_character = None
+@@ -153,6 +154,8 @@ def _cell_len(text: str, unicode_version: str) -> int:
+             if character_width := get_character_cell_size(character, unicode_version):
+                 last_measured_character = character
+                 total_width += character_width
++            else:
++                last_measured_character = None
+         index += 1
+ 
+     return total_width
+@@ -183,7 +186,7 @@ def split_graphemes(
+         if (character := text[index]) in SPECIAL:
+             if character == "\u200d":
+                 # zero width joiner
+-                index += 2
++                index += 1
+                 if spans:
+                     start, _end, cell_length = spans[-1]
+                     spans[-1] = (start, index, cell_length)
+@@ -207,6 +210,8 @@ def split_graphemes(
+             # zero width characters are associated with the previous character
+             start, _end, cell_length = spans[-1]
+             spans[-1] = (start, index := index + 1, cell_length)
++        else:
++            index += 1
+ 
+     return (spans, total_width)
+ 

@@ -1,0 +1,34 @@
+diff --git a/rich/console.py b/rich/console.py
+index ee543553..f272c179 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -2027,7 +2027,10 @@ class Console:
+                             if self.no_color and self._color_system:
+                                 buffer = list(Segment.remove_color(buffer))
+ 
+-                            legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
++                            try:
++                                legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
++                            except BrokenPipeError:
++                                self.file = NULL_FILE
+                         else:
+                             # Either a non-std stream on legacy Windows, or modern Windows.
+                             text = self._render_buffer(self._buffer[:])
+@@ -2057,6 +2060,8 @@ class Console:
+                             except UnicodeEncodeError as error:
+                                 error.reason = f"{error.reason}\n*** You may need to add PYTHONIOENCODING=utf-8 to your environment ***"
+                                 raise
++                            except BrokenPipeError:
++                                self.file = NULL_FILE
+                     else:
+                         text = self._render_buffer(self._buffer[:])
+                         try:
+@@ -2064,6 +2069,8 @@ class Console:
+                         except UnicodeEncodeError as error:
+                             error.reason = f"{error.reason}\n*** You may need to add PYTHONIOENCODING=utf-8 to your environment ***"
+                             raise
++                        except BrokenPipeError:
++                            self.file = NULL_FILE
+ 
+                     self.file.flush()
+                     del self._buffer[:]

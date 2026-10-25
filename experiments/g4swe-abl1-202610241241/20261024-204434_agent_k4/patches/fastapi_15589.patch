@@ -1,0 +1,103 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 000000000..246044b7f
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,36 @@
++
++from fastapi import FastAPI, Header, HTTPException
++from fastapi.testclient import TestClient
++import pytest
++
++app = FastAPI()
++
++@app.get("/test")
++async def test_header(x_my_header: str = Header(convert_underscores=True)):
++    return {"x_my_header": x_my_header}
++
++client = TestClient(app)
++
++def test_underscore_header_rejected():
++    # Should be rejected (422) because convert_underscores=True
++    response = client.get("/test", headers={"x_my_header": "value"})
++    assert response.status_code == 422
++
++def test_hyphen_header_accepted():
++    # Should be accepted (200)
++    response = client.get("/test", headers={"X-My-Header": "value"})
++    assert response.status_code == 200
++    assert response.json() == {"x_my_header": "value"}
++
++if __name__ == "__main__":
++    try:
++        test_underscore_header_rejected()
++        print("test_underscore_header_rejected passed")
++    except AssertionError as e:
++        print(f"test_underscore_header_rejected failed: {e}")
++
++    try:
++        test_hyphen_header_accepted()
++        print("test_hyphen_header_accepted passed")
++    except AssertionError as e:
++        print(f"test_hyphen_header_accepted failed: {e}")
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 000000000..a614674db
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,55 @@
++from fastapi import FastAPI, Header
++from fastapi.testclient import TestClient
++from pydantic import BaseModel
++
++app = FastAPI()
++
++@app.get("/headers")
++async def read_headers(x_test_header: str = Header()):
++    return {"x_test_header": x_test_header}
++
++client = TestClient(app)
++
++def test_underscore_header():
++    # This should fail (return 422) if convert_underscores=True (default)
++    # because it should only accept 'x-test-header'
++    response = client.get("/headers", headers={"x_test_header": "test-agent"})
++    print(f"Response with x_test_header: {response.json()}")
++    assert response.status_code == 422, f"Expected 422, got {response.status_code}"
++
++def test_hyphen_header():
++    # This should succeed
++    response = client.get("/headers", headers={"x-test-header": "test-agent"})
++    print(f"Response with x-test-header: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"x_test_header": "test-agent"}
++
++def test_underscore_header_disabled():
++    # This should succeed if convert_underscores=False
++    @app.get("/headers-underscore")
++    async def read_headers_underscore(x_test_header: str = Header(convert_underscores=False)):
++        return {"x_test_header": x_test_header}
++    
++    response = client.get("/headers-underscore", headers={"x_test_header": "test-agent"})
++    print(f"Response with x_test_header (disabled): {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"x_test_header": "test-agent"}
++
++if __name__ == "__main__":
++    try:
++        test_underscore_header()
++        print("test_underscore_header passed")
++    except AssertionError as e:
++        print(f"test_underscore_header failed: {e}")
++    
++    try:
++        test_hyphen_header()
++        print("test_hyphen_header passed")
++    except AssertionError as e:
++        print(f"test_hyphen_header failed: {e}")
++
++    try:
++        test_underscore_header_disabled()
++        print("test_underscore_header_disabled passed")
++    except AssertionError as e:
++        print(f"test_underscore_header_disabled failed: {e}")

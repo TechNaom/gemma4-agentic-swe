@@ -1,0 +1,179 @@
+diff --git a/fastapi/exceptions.py b/fastapi/exceptions.py
+index 0620428b..f90d015d 100644
+--- a/fastapi/exceptions.py
++++ b/fastapi/exceptions.py
+@@ -155,30 +155,36 @@ class DependencyScopeError(FastAPIError):
+ 
+ 
+ class ValidationException(Exception):
+-    def __init__(self, errors: Sequence[Any]) -> None:
++    def __init__(self, errors: Sequence[Any], *, endpoint_context: Optional[Dict[str, Any]] = None) -> None:
+         self._errors = errors
++        self.endpoint_context = endpoint_context
+ 
+     def errors(self) -> Sequence[Any]:
+         return self._errors
+ 
++    def __str__(self) -> str:
++        message = f"{len(self._errors)} validation errors:\n"
++        for err in self._errors:
++            message += f"  {err}\n"
++        if self.endpoint_context:
++            ctx = self.endpoint_context
++            message += f"Endpoint: {ctx.get('method')} {ctx.get('route')} ({ctx.get('filepath')}:{ctx.get('lineno')} in {ctx.get('func_name')})"
++        return message
++
+ 
+ class RequestValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(self, errors: Sequence[Any], *, body: Any = None, endpoint_context: Optional[Dict[str, Any]] = None) -> None:
++        super().__init__(errors, endpoint_context=endpoint_context)
+         self.body = body
+ 
+ 
+ class WebSocketRequestValidationError(ValidationException):
+-    pass
++    def __init__(self, errors: Sequence[Any], *, endpoint_context: Optional[Dict[str, Any]] = None) -> None:
++        super().__init__(errors, endpoint_context=endpoint_context)
+ 
+ 
+ class ResponseValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(self, errors: Sequence[Any], *, body: Any = None, endpoint_context: Optional[Dict[str, Any]] = None) -> None:
++        super().__init__(errors, endpoint_context=endpoint_context)
+         self.body = body
+ 
+-    def __str__(self) -> str:
+-        message = f"{len(self._errors)} validation errors:\n"
+-        for err in self._errors:
+-            message += f"  {err}\n"
+-        return message
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index c10175b1..33fae113 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -56,6 +56,7 @@ from fastapi.utils import (
+     create_cloned_field,
+     create_model_field,
+     generate_unique_id,
++    get_endpoint_metadata,
+     get_value_or_default,
+     is_body_allowed_for_status_code,
+ )
+@@ -223,6 +224,7 @@ async def serialize_response(
+     exclude_defaults: bool = False,
+     exclude_none: bool = False,
+     is_coroutine: bool = True,
++    endpoint_context: Optional[Dict[str, Any]] = None,
+ ) -> Any:
+     if field:
+         errors = []
+@@ -246,7 +248,9 @@ async def serialize_response(
+             errors.append(errors_)
+         if errors:
+             raise ResponseValidationError(
+-                errors=_normalize_errors(errors), body=response_content
++                errors=_normalize_errors(errors),
++                body=response_content,
++                endpoint_context=endpoint_context,
+             )
+ 
+         if hasattr(field, "serialize"):
+@@ -355,6 +359,9 @@ def get_request_handler(
+                     }
+                 ],
+                 body=e.doc,
++                endpoint_context=get_endpoint_metadata(
++                    dependant.call, route=request.scope.get("route"), method=request.method
++                ),
+             )
+             raise validation_error from e
+         except HTTPException:
+@@ -414,6 +421,9 @@ def get_request_handler(
+                     exclude_defaults=response_model_exclude_defaults,
+                     exclude_none=response_model_exclude_none,
+                     is_coroutine=is_coroutine,
++                    endpoint_context=get_endpoint_metadata(
++                        dependant.call, route=request.scope.get("route"), method=request.method
++                    ),
+                 )
+                 response = actual_response_class(content, **response_args)
+                 if not is_body_allowed_for_status_code(response.status_code):
+@@ -421,7 +431,11 @@ def get_request_handler(
+                 response.headers.raw.extend(solved_result.response.headers.raw)
+         if errors:
+             validation_error = RequestValidationError(
+-                _normalize_errors(errors), body=body
++                _normalize_errors(errors),
++                body=body,
++                endpoint_context=get_endpoint_metadata(
++                    dependant.call, route=request.scope.get("route"), method=request.method
++                ),
+             )
+             raise validation_error
+ 
+@@ -451,7 +465,10 @@ def get_websocket_app(
+         )
+         if solved_result.errors:
+             raise WebSocketRequestValidationError(
+-                _normalize_errors(solved_result.errors)
++                _normalize_errors(solved_result.errors),
++                endpoint_context=get_endpoint_metadata(
++                    dependant.call, route=websocket.scope.get("route"), method=websocket.scope.get("method")
++                ),
+             )
+         assert dependant.call is not None, "dependant.call must be a function"
+         await dependant.call(**solved_result.values)
+diff --git a/fastapi/utils.py b/fastapi/utils.py
+index b3b89ed2..448ca2e2 100644
+--- a/fastapi/utils.py
++++ b/fastapi/utils.py
+@@ -1,5 +1,7 @@
++import inspect
+ import re
+ import warnings
++
+ from dataclasses import is_dataclass
+ from typing import (
+     TYPE_CHECKING,
+@@ -149,6 +151,38 @@ def create_cloned_field(
+         if isinstance(field, v2.ModelField):
+             return field
+ 
++
++_endpoint_static_metadata_cache: Dict[Any, Dict[str, Any]] = {}
++
++
++def get_endpoint_metadata(endpoint: Any, route: Any, method: Optional[str] = None) -> Dict[str, Any]:
++    if endpoint in _endpoint_static_metadata_cache:
++        static_metadata = _endpoint_static_metadata_cache[endpoint]
++    else:
++        try:
++            filepath = inspect.getfile(endpoint)
++            lineno = inspect.getlineno(endpoint)
++            func_name = getattr(endpoint, "__name__", str(endpoint))
++            static_metadata = {
++                "filepath": filepath,
++                "lineno": lineno,
++                "func_name": func_name,
++            }
++        except Exception:
++            static_metadata = {
++                "filepath": "unknown",
++                "lineno": 0,
++                "func_name": "unknown",
++            }
++        _endpoint_static_metadata_cache[endpoint] = static_metadata
++
++    return {
++        **static_metadata,
++        "method": method,
++        "route": route,
++    }
++
++
+     from fastapi._compat import v1
+ 
+     # cloned_types caches already cloned types to support recursive models and improve

@@ -1,0 +1,27 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 2a4d9a01..9094b51d 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -79,10 +79,18 @@ class Dependant:
+     def _unwrapped_call(self) -> Any:
+         if self.call is None:
+             return self.call  # pragma: no cover
+-        unwrapped = inspect.unwrap(self.call)
+-        if isinstance(unwrapped, partial):
+-            unwrapped = unwrapped.func
+-        return unwrapped
++        
++        call = self.call
++        while True:
++            unwrapped = inspect.unwrap(call)
++            if unwrapped is not call:
++                call = unwrapped
++                continue
++            if isinstance(call, partial):
++                call = call.func
++                continue
++            break
++        return call
+ 
+     @cached_property
+     def is_gen_callable(self) -> bool:

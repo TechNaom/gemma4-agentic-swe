@@ -1,0 +1,109 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..5d73872b
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,36 @@
++from rich.console import Console
++from rich.padding import Padding
++from rich.text import Text
++from rich.segment import Segment
++
++def test_padding_overflow():
++    console = Console(width=10)
++    # left=6, right=6, total=12 > 10
++    padding = Padding(Text("Hello"), pad=(0, 6, 0, 6), expand=False)
++    
++    # console.render returns a generator of segments
++    segments = list(console.render(padding))
++    
++    # We need to group segments into lines to check width
++    lines = []
++    current_line = []
++    for segment in segments:
++        if "\n" in segment.text and not segment.control:
++            lines.append(current_line)
++            current_line = []
++        else:
++            current_line.append(segment)
++    lines.append(current_line)
++    
++    for i, line in enumerate(lines):
++        # Calculate total width of the line
++        width = sum(len(segment.text) for segment in line if not segment.control)
++        print(f"Line {i} width: {width}")
++        assert width <= 10, f"Line {i} width {width} exceeds max_width 10"
++
++if __name__ == "__main__":
++    try:
++        test_padding_overflow()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
+diff --git a/rich/padding.py b/rich/padding.py
+index d1aa01be..a08419bd 100644
+--- a/rich/padding.py
++++ b/rich/padding.py
+@@ -80,16 +80,21 @@ class Padding(JupyterMixin):
+         self, console: "Console", options: "ConsoleOptions"
+     ) -> "RenderResult":
+         style = console.get_style(self.style)
++        left = self.left
++        right = self.right
++        if left + right > options.max_width:
++            right = max(0, options.max_width - left)
++            left = min(left, options.max_width)
+         if self.expand:
+             width = options.max_width
+         else:
+             width = min(
+                 Measurement.get(console, options, self.renderable).maximum
+-                + self.left
+-                + self.right,
++                + left
++                + right,
+                 options.max_width,
+             )
+-        render_options = options.update_width(width - self.left - self.right)
++        render_options = options.update_width(width - left - right)
+         if render_options.height is not None:
+             render_options = render_options.update_height(
+                 height=render_options.height - self.top - self.bottom
+@@ -97,27 +102,29 @@ class Padding(JupyterMixin):
+         lines = console.render_lines(
+             self.renderable, render_options, style=style, pad=True
+         )
++        if not lines:
++            lines = [[]]
+         _Segment = Segment
+ 
+-        left = _Segment(" " * self.left, style) if self.left else None
+-        right = (
+-            [_Segment(f'{" " * self.right}', style), _Segment.line()]
+-            if self.right
++        left_segment = _Segment(" " * left, style) if left else None
++        right_segment = (
++            [_Segment(f'{" " * right}', style), _Segment.line()]
++            if right
+             else [_Segment.line()]
+         )
+         blank_line: Optional[List[Segment]] = None
+         if self.top:
+             blank_line = [_Segment(f'{" " * width}\n', style)]
+             yield from blank_line * self.top
+-        if left:
++        if left_segment:
+             for line in lines:
+-                yield left
++                yield left_segment
+                 yield from line
+-                yield from right
++                yield from right_segment
+         else:
+             for line in lines:
+                 yield from line
+-                yield from right
++                yield from right_segment
+         if self.bottom:
+             blank_line = blank_line or [_Segment(f'{" " * width}\n', style)]
+             yield from blank_line * self.bottom

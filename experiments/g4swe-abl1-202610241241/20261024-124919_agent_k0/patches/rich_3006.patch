@@ -1,0 +1,57 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..5bef38b2
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,29 @@
++import inspect
++from rich.repr import auto
++
++class AlwaysTrueEq:
++    def __eq__(self, other):
++        return True
++
++@auto
++class Foo:
++    def __init__(self, x, y=AlwaysTrueEq()):
++        self.x = x
++        self.y = y
++
++foo = Foo(1)
++# If the bug exists, y will be treated as if it has no default value.
++# In auto_rich_repr, if param.default == param.empty, it yields getattr(self, param.name).
++# If it has a default, it yields param.name, getattr(self, param.name), param.default.
++
++# Let's see what __rich_repr__ yields.
++for item in foo.__rich_repr__():
++    print(item)
++
++# Expected if bug is fixed:
++# 1
++# ('y', <AlwaysTrueEq object>, <AlwaysTrueEq object>)
++
++# Actual if bug exists:
++# 1
++# <AlwaysTrueEq object>
+diff --git a/rich/repr.py b/rich/repr.py
+index 9dd65cde..3650c3ac 100644
+--- a/rich/repr.py
++++ b/rich/repr.py
+@@ -55,7 +55,7 @@ def auto(
+                         if key is None:
+                             append(repr(value))
+                         else:
+-                            if default and default[0] == value:
++                            if default and default[0] is value:
+                                 continue
+                             append(f"{key}={value!r}")
+                 else:
+@@ -76,7 +76,7 @@ def auto(
+                         param.POSITIONAL_OR_KEYWORD,
+                         param.KEYWORD_ONLY,
+                     ):
+-                        if param.default == param.empty:
++                        if param.default is param.empty:
+                             yield getattr(self, param.name)
+                         else:
+                             yield param.name, getattr(self, param.name), param.default

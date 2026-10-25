@@ -1,0 +1,53 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 000000000..80542fdde
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,47 @@
++from fastapi import FastAPI, Header, Request
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.get("/")
++async def root(my_header: str = Header(None), request: Request = None):
++    print(f"Request headers: {request.headers}")
++    return {"my_header": my_header}
++
++client = TestClient(app)
++
++def test_underscore_header():
++    print("Testing underscore header...")
++    response = client.get("/", headers={"my_header": "value"})
++    print(f"Response: {response.json()}")
++    assert response.json() == {"my_header": None}
++
++def test_hyphen_header():
++    print("Testing hyphen header...")
++    response = client.get("/", headers={"my-header": "value"})
++    print(f"Response: {response.json()}")
++    assert response.json() == {"my_header": "value"}
++
++def test_underscore_header_disabled():
++    print("Testing underscore header (disabled)...")
++    # We need a different endpoint for this
++    pass
++
++app.get("/disabled")(lambda my_header: Header(None, convert_underscores=False)) # This is not how it works
++
++# Let's just use a separate app or a separate endpoint
++@app.get("/disabled")
++async def root_disabled(my_header: str = Header(None, convert_underscores=False)):
++    return {"my_header": my_header}
++
++def test_underscore_header_disabled_fixed():
++    print("Testing underscore header (disabled)...")
++    response = client.get("/disabled", headers={"my_header": "value"})
++    print(f"Response: {response.json()}")
++    assert response.json() == {"my_header": "value"}
++
++if __name__ == "__main__":
++    test_underscore_header()
++    test_hyphen_header()
++    test_underscore_header_disabled_fixed()
++    print("All tests passed!")

@@ -1,0 +1,102 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index c5c6b69b..83b8607d 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -129,7 +129,11 @@ def get_parameterless_sub_dependant(*, depends: params.Depends, path: str) -> De
+     if isinstance(depends, params.Security) and depends.scopes:
+         use_security_scopes.extend(depends.scopes)
+     return get_dependant(
+-        path=path, call=depends.dependency, security_scopes=use_security_scopes
++        path=path,
++        call=depends.dependency,
++        security_scopes=use_security_scopes,
++        use_cache=depends.use_cache,
++        scope=depends.scope,
+     )
+ 
+ 
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..4c7cdb8a
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,33 @@
++from fastapi import FastAPI, Depends
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++counter = 0
++
++def my_dependency():
++    global counter
++    counter += 1
++    return counter
++
++@app.get("/", dependencies=[Depends(my_dependency, scope="request")])
++def root(val: int = Depends(my_dependency)):
++    return {"val": val}
++
++client = TestClient(app)
++
++def test_scope_function():
++    global counter
++    counter = 0
++    response = client.get("/")
++    assert response.status_code == 200
++    # Should be called once: cached for the request
++    print(f"Counter: {counter}")
++    assert counter == 1
++    assert response.json() == {"val": 1}
++
++if __name__ == "__main__":
++    try:
++        test_scope_function()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
+diff --git a/repro_v2.py b/repro_v2.py
+new file mode 100644
+index 00000000..7bfe1113
+--- /dev/null
++++ b/repro_v2.py
+@@ -0,0 +1,40 @@
++from fastapi import FastAPI, Depends
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++counter = 0
++
++def my_dependency():
++    global counter
++    counter += 1
++    return counter
++
++@app.get("/", dependencies=[Depends(my_dependency, scope="request")])
++def root(val: int = Depends(my_dependency, scope="request")):
++    return {"val": val}
++
++@app.get("/func", dependencies=[Depends(my_dependency, scope="function")])
++def root_func(val: int = Depends(my_dependency, scope="function")):
++    return {"val": val}
++
++client = TestClient(app)
++
++def test_request_scope():
++    global counter
++    counter = 0
++    response = client.get("/")
++    print(f"Request scope counter: {counter}")
++    assert response.json() == {"val": 1}
++    assert counter == 1
++
++def test_function_scope():
++    global counter
++    counter = 0
++    response = client.get("/func")
++    print(f"Function scope counter: {counter}")
++    assert response.json() == {"val": 2}
++    assert counter == 2
++
++if __name__ == "__main__":
++    test_request_scope()
++    test_function_scope()

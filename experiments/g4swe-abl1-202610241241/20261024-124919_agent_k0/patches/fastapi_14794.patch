@@ -1,0 +1,179 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index fc5dfed8..883f9b74 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -449,7 +449,7 @@ def analyze_param(
+         depends = dataclasses.replace(depends, dependency=type_annotation)
+ 
+     # Handle non-param type annotations like Request
+-    if lenient_issubclass(
++    if depends is None and lenient_issubclass(
+         type_annotation,
+         (
+             Request,
+@@ -460,7 +460,6 @@ def analyze_param(
+             SecurityScopes,
+         ),
+     ):
+-        assert depends is None, f"Cannot specify `Depends` for type {type_annotation!r}"
+         assert field_info is None, (
+             f"Cannot specify FastAPI annotation for type {type_annotation!r}"
+         )
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..57ef368a
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,15 @@
++from fastapi import FastAPI, Depends, Query
++from fastapi.responses import Response
++from typing import Annotated
++
++app = FastAPI()
++
++class MyResponse(Response):
++    pass
++
++@app.get("/")
++def read_root(res: Annotated[MyResponse, Depends()]):
++    return res
++
++if __name__ == "__main__":
++    print("App created successfully")
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..449d650d
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,27 @@
++from fastapi import FastAPI, Depends, Response
++from fastapi.testclient import TestClient
++from typing import Annotated
++
++app = FastAPI()
++
++def modify_response():
++    return Response(content="modified", status_code=200)
++
++@app.get("/")
++def endpoint(response: Annotated[Response, Depends(modify_response)]):
++    return response
++
++client = TestClient(app)
++
++def test_response_dependency():
++    response = client.get("/")
++    assert response.status_code == 200
++    assert response.text == "modified"
++
++if __name__ == "__main__":
++    try:
++        test_response_dependency()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e
+diff --git a/reproduce_issue_2.py b/reproduce_issue_2.py
+new file mode 100644
+index 00000000..0d6c24f0
+--- /dev/null
++++ b/reproduce_issue_2.py
+@@ -0,0 +1,26 @@
++from fastapi import FastAPI, Query, Response
++from fastapi.testclient import TestClient
++from typing import Annotated
++
++app = FastAPI()
++
++@app.get("/")
++def endpoint(response: Annotated[Response, Query()]):
++    return response
++
++client = TestClient(app)
++
++def test_response_query():
++    try:
++        client.get("/")
++    except Exception as e:
++        print(f"Caught exception: {e}")
++        raise e
++
++if __name__ == "__main__":
++    try:
++        test_response_query()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e
+diff --git a/reproduce_issue_3.py b/reproduce_issue_3.py
+new file mode 100644
+index 00000000..a8e5b0c6
+--- /dev/null
++++ b/reproduce_issue_3.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, Depends, Response
++from fastapi.testclient import TestClient
++from typing import Annotated
++
++app = FastAPI()
++
++def modify_response():
++    return Response(content="modified", status_code=200)
++
++@app.get("/")
++def endpoint(response: Annotated[Response, Depends(modify_response)] = Depends(modify_response)):
++    return response
++
++client = TestClient(app)
++
++def test_response_dependency():
++    try:
++        client.get("/")
++    except Exception as e:
++        print(f"Caught exception: {e}")
++        raise e
++
++if __name__ == "__main__":
++    try:
++        test_response_dependency()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e
+diff --git a/reproduce_issue_4.py b/reproduce_issue_4.py
+new file mode 100644
+index 00000000..0aad594b
+--- /dev/null
++++ b/reproduce_issue_4.py
+@@ -0,0 +1,31 @@
++from fastapi import FastAPI, Depends, Response
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++class MyResponse(Response):
++    pass
++
++def get_response():
++    return MyResponse(content="modified", status_code=200)
++
++@app.get("/")
++def endpoint(response: MyResponse = Depends(get_response)):
++    return response
++
++client = TestClient(app)
++
++def test_response_dependency():
++    try:
++        client.get("/")
++    except Exception as e:
++        print(f"Caught exception: {e}")
++        raise e
++
++if __name__ == "__main__":
++    try:
++        test_response_dependency()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e

@@ -1,0 +1,41 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index 13486dd1..0eeb0516 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -1,7 +1,7 @@
+ import inspect
+ import sys
+ from dataclasses import dataclass, field
+-from functools import cached_property
++from functools import cached_property, partial
+ from typing import Any, Callable, List, Optional, Sequence, Union
+ 
+ from fastapi._compat import ModelField
+@@ -79,7 +79,10 @@ class Dependant:
+     def _unwrapped_call(self) -> Any:
+         if self.call is None:
+             return self.call  # pragma: no cover
+-        return inspect.unwrap(self.call)
++        call = self.call
++        while isinstance(call, partial):
++            call = call.func
++        return inspect.unwrap(call)
+ 
+     @cached_property
+     def is_gen_callable(self) -> bool:
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index 1a493a9f..52eaec39 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -251,9 +251,9 @@ def get_dependant(
+     path_param_names = get_path_param_names(path)
+     endpoint_signature = get_typed_signature(call)
+     signature_params = endpoint_signature.parameters
+-    if isinstance(call, SecurityBase):
++    if isinstance(dependant._unwrapped_call, SecurityBase):
+         security_requirement = SecurityRequirement(
+-            security_scheme=call, scopes=current_scopes
++            security_scheme=dependant._unwrapped_call, scopes=current_scopes
+         )
+         dependant.security_requirements.append(security_requirement)
+     for param_name, param in signature_params.items():

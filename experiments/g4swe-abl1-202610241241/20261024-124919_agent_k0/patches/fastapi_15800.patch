@@ -1,0 +1,80 @@
+diff --git a/dist_router/index.html b/dist_router/index.html
+new file mode 100644
+index 000000000..bbb188e52
+--- /dev/null
++++ b/dist_router/index.html
+@@ -0,0 +1 @@
++Hello Router Frontend
+\ No newline at end of file
+diff --git a/fastapi/applications.py b/fastapi/applications.py
+index c7c551e4e..a1d32773d 100644
+--- a/fastapi/applications.py
++++ b/fastapi/applications.py
+@@ -22,6 +22,7 @@ from fastapi.openapi.utils import get_openapi
+ from fastapi.params import Depends
+ from fastapi.types import DecoratedCallable, IncEx
+ from fastapi.utils import generate_unique_id
++from fastapi.staticfiles import StaticFiles
+ from starlette.applications import Starlette
+ from starlette.datastructures import State
+ from starlette.exceptions import HTTPException
+@@ -1358,6 +1359,23 @@ class FastAPI(Starlette):
+ 
+         return decorator
+ 
++    def frontend(
++        self,
++        path: str,
++        directory: str,
++        name: str | None = None,
++    ) -> None:
++        """
++        Mount a static files directory to serve as the frontend.
++
++        Args:
++            path: The path to mount the static files at.
++            directory: The directory containing the static files.
++            name: An optional name for the mount.
++        """
++        name = name or "frontend"
++        self.mount(path, StaticFiles(directory=directory), name=name)
++
+     def include_router(
+         self,
+         router: Annotated[routing.APIRouter, Doc("The `APIRouter` to include.")],
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index 4a55fda8a..41b136be3 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -76,6 +76,7 @@ from fastapi.utils import (
+     get_value_or_default,
+     is_body_allowed_for_status_code,
+ )
++from fastapi.staticfiles import StaticFiles
+ from starlette import routing
+ from starlette._exception_handler import wrap_app_handling_exceptions
+ from starlette._utils import get_route_path, is_async_callable
+@@ -2376,6 +2377,23 @@ class APIRouter(routing.Router):
+ 
+         return decorator
+ 
++    def frontend(
++        self,
++        path: str,
++        directory: str,
++        name: str | None = None,
++    ) -> None:
++        """
++        Mount a static files directory to serve as the frontend.
++
++        Args:
++            path: The path to mount the static files at.
++            directory: The directory containing the static files.
++            name: An optional name for the mount.
++        """
++        name = name or "frontend"
++        self.routes.append(Mount(path, StaticFiles(directory=directory), name=name))
++
+     def include_router(
+         self,
+         router: Annotated["APIRouter", Doc("The `APIRouter` to include.")],

@@ -1,0 +1,320 @@
+diff --git a/debug_dir.py b/debug_dir.py
+new file mode 100644
+index 00000000..86c49c0a
+--- /dev/null
++++ b/debug_dir.py
+@@ -0,0 +1,3 @@
++from typing import List, TypeVar
++T = TypeVar("T")
++print(dir(List[T]))
+diff --git a/debug_equal.py b/debug_equal.py
+new file mode 100644
+index 00000000..3c42b8e8
+--- /dev/null
++++ b/debug_equal.py
+@@ -0,0 +1,7 @@
++import typing
++from typing import List
++type MyList[T] = List[T]
++from fastapi._compat.shared import unwrap_type_alias
++print(f"unwrap_type_alias(MyList): {unwrap_type_alias(MyList)}")
++print(f"List: {List}")
++print(f"Equal? {unwrap_type_alias(MyList) == List}")
+diff --git a/debug_name.py b/debug_name.py
+new file mode 100644
+index 00000000..a44ebead
+--- /dev/null
++++ b/debug_name.py
+@@ -0,0 +1,3 @@
++from typing import List, TypeVar
++T = TypeVar("T")
++print(f"{List[T]._name=}")
+diff --git a/debug_origin.py b/debug_origin.py
+new file mode 100644
+index 00000000..9d8f3827
+--- /dev/null
++++ b/debug_origin.py
+@@ -0,0 +1,4 @@
++import typing
++from typing import List, get_origin
++type MyList[T] = List[T]
++print(f"get_origin(MyList[int]): {get_origin(MyList[int])}")
+diff --git a/debug_type_alias.py b/debug_type_alias.py
+new file mode 100644
+index 00000000..670cb6cf
+--- /dev/null
++++ b/debug_type_alias.py
+@@ -0,0 +1,11 @@
++import typing
++from typing import List
++from fastapi._compat.shared import unwrap_type_alias
++
++type MyList[T] = List[T]
++print(f"Type of MyList: {type(MyList)}")
++print(f"MyList: {MyList}")
++print(f"MyList[int]: {MyList[int]}")
++print(f"Type of MyList[int]: {type(MyList[int])}")
++print(f"unwrap_type_alias(MyList): {unwrap_type_alias(MyList)}")
++print(f"unwrap_type_alias(MyList[int]): {unwrap_type_alias(MyList[int])}")
+diff --git a/debug_unwrap.py b/debug_unwrap.py
+new file mode 100644
+index 00000000..861c0657
+--- /dev/null
++++ b/debug_unwrap.py
+@@ -0,0 +1,12 @@
++import typing
++from typing import List
++from fastapi._compat.shared import unwrap_type_alias
++
++type MyList[T] = List[T]
++
++print(f"{MyList=}")
++print(f"{MyList.__value__=}")
++print(f"{type(MyList.__value__)=}")
++
++result = unwrap_type_alias(MyList)
++print(f"{result=}")
+diff --git a/fastapi/_compat/shared.py b/fastapi/_compat/shared.py
+index 68b9bbdf..ec5455d0 100644
+--- a/fastapi/_compat/shared.py
++++ b/fastapi/_compat/shared.py
+@@ -27,6 +27,34 @@ else:
+         types.UnionType,
+     )  # pyright: ignore[reportAttributeAccessIssue]
+ 
++
++def is_typealiastype(obj: Any) -> bool:
++    try:
++        from typing import TypeAliasType
++        return isinstance(obj, TypeAliasType)
++    except ImportError:
++        return False
++
++
++def unwrap_type_alias(annotation: Any) -> Any:
++    while is_typealiastype(annotation):
++        annotation = getattr(annotation, "__value__", annotation)
++    
++    origin = get_origin(annotation)
++    if origin is not None:
++        args = get_args(annotation)
++        if all(isinstance(arg, typing.TypeVar) for arg in args):
++            if origin is list:
++                return typing.List
++            if origin is dict:
++                return typing.Dict
++            if origin is tuple:
++                return typing.Tuple
++            return origin
++            
++    return annotation
++
++
+ PYDANTIC_VERSION_MINOR_TUPLE = tuple(int(x) for x in PYDANTIC_VERSION.split(".")[:2])
+ PYDANTIC_V2 = PYDANTIC_VERSION_MINOR_TUPLE[0] == 2
+ 
+@@ -64,14 +92,17 @@ def _annotation_is_sequence(annotation: Union[type[Any], None]) -> bool:
+ 
+ 
+ def field_annotation_is_sequence(annotation: Union[type[Any], None]) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         for arg in get_args(annotation):
+             if field_annotation_is_sequence(arg):
+                 return True
+         return False
++    if origin is not None and is_typealiastype(origin):
++        return field_annotation_is_sequence(unwrap_type_alias(origin))
+     return _annotation_is_sequence(annotation) or _annotation_is_sequence(
+-        get_origin(annotation)
++        origin
+     )
+ 
+ 
+@@ -88,6 +119,7 @@ def _annotation_is_complex(annotation: Union[type[Any], None]) -> bool:
+ 
+ 
+ def field_annotation_is_complex(annotation: Union[type[Any], None]) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         return any(field_annotation_is_complex(arg) for arg in get_args(annotation))
+@@ -95,6 +127,9 @@ def field_annotation_is_complex(annotation: Union[type[Any], None]) -> bool:
+     if origin is Annotated:
+         return field_annotation_is_complex(get_args(annotation)[0])
+ 
++    if origin is not None and is_typealiastype(origin):
++        return field_annotation_is_complex(unwrap_type_alias(origin))
++
+     return (
+         _annotation_is_complex(annotation)
+         or _annotation_is_complex(origin)
+@@ -109,6 +144,7 @@ def field_annotation_is_scalar(annotation: Any) -> bool:
+ 
+ 
+ def field_annotation_is_scalar_sequence(annotation: Union[type[Any], None]) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         at_least_one_scalar_sequence = False
+@@ -126,6 +162,7 @@ def field_annotation_is_scalar_sequence(annotation: Union[type[Any], None]) -> b
+ 
+ 
+ def is_bytes_or_nonable_bytes_annotation(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     if lenient_issubclass(annotation, bytes):
+         return True
+     origin = get_origin(annotation)
+@@ -137,6 +174,7 @@ def is_bytes_or_nonable_bytes_annotation(annotation: Any) -> bool:
+ 
+ 
+ def is_uploadfile_or_nonable_uploadfile_annotation(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     if lenient_issubclass(annotation, UploadFile):
+         return True
+     origin = get_origin(annotation)
+@@ -148,6 +186,7 @@ def is_uploadfile_or_nonable_uploadfile_annotation(annotation: Any) -> bool:
+ 
+ 
+ def is_bytes_sequence_annotation(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         at_least_one = False
+@@ -163,6 +202,7 @@ def is_bytes_sequence_annotation(annotation: Any) -> bool:
+ 
+ 
+ def is_uploadfile_sequence_annotation(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     origin = get_origin(annotation)
+     if origin is Union or origin is UnionType:
+         at_least_one = False
+@@ -192,6 +232,7 @@ def is_pydantic_v1_model_class(cls: Any) -> bool:
+ 
+ 
+ def annotation_is_pydantic_v1(annotation: Any) -> bool:
++    annotation = unwrap_type_alias(annotation)
+     if is_pydantic_v1_model_class(annotation):
+         return True
+     origin = get_origin(annotation)
+diff --git a/verify_type_alias.py b/verify_type_alias.py
+new file mode 100644
+index 00000000..cec44097
+--- /dev/null
++++ b/verify_type_alias.py
+@@ -0,0 +1,114 @@
++import typing
++from typing import List, Union, Any
++from fastapi._compat.shared import (
++    unwrap_type_alias,
++    field_annotation_is_sequence,
++    field_annotation_is_complex,
++    field_annotation_is_scalar_sequence,
++    is_bytes_or_nonable_bytes_annotation,
++    is_uploadfile_or_nonable_uploadfile_annotation,
++    is_bytes_sequence_annotation,
++    is_uploadfile_sequence_annotation,
++    annotation_is_pydantic_v1,
++)
++from fastapi import UploadFile
++
++# Python 3.12 type alias
++type MyList[T] = List[T]
++type MyBytes = bytes
++type MyUploadFile = UploadFile
++type MyBytesList = List[bytes]
++type MyUploadFileList = List[UploadFile]
++
++def test_unwrap_type_alias():
++    print("Testing unwrap_type_alias...")
++    assert unwrap_type_alias(MyList) == List
++    assert unwrap_type_alias(MyBytes) == bytes
++    assert unwrap_type_alias(MyUploadFile) == UploadFile
++    assert unwrap_type_alias(MyBytesList) == List[bytes]
++    assert unwrap_type_alias(MyUploadFileList) == List[UploadFile]
++    assert unwrap_type_alias(int) == int
++    print("unwrap_type_alias passed!")
++
++def test_field_annotation_is_sequence():
++    print("Testing field_annotation_is_sequence...")
++    assert field_annotation_is_sequence(MyList[int]) is True
++    assert field_annotation_is_sequence(MyBytesList) is True
++    assert field_annotation_is_sequence(MyUploadFileList) is True
++    assert field_annotation_is_sequence(int) is False
++    print("field_annotation_is_sequence passed!")
++
++def test_field_annotation_is_complex():
++    print("Testing field_annotation_is_complex...")
++    # Complex is usually something that is not a simple scalar
++    # MyList[int] should be complex
++    assert field_annotation_is_complex(MyList[int]) is True
++    assert field_annotation_is_complex(int) is False
++    print("field_annotation_is_complex passed!")
++
++def test_field_annotation_is_scalar_sequence():
++    print("Testing field_annotation_is_scalar_sequence...")
++    assert field_annotation_is_scalar_sequence(MyBytesList) is True
++    assert field_annotation_is_scalar_sequence(MyList[int]) is True
++    assert field_annotation_is_scalar_sequence(int) is False
++    print("field_annotation_is_scalar_sequence passed!")
++
++def test_is_bytes_or_nonable_bytes_annotation():
++    print("Testing is_bytes_or_nonable_bytes_annotation...")
++    assert is_bytes_or_nonable_bytes_annotation(MyBytes) is True
++    assert is_bytes_or_nonable_bytes_annotation(bytes) is True
++    assert is_bytes_or_nonable_bytes_annotation(int) is False
++    print("is_bytes_or_nonable_bytes_annotation passed!")
++
++def test_is_uploadfile_or_nonable_uploadfile_annotation():
++    print("Testing is_uploadfile_or_nonable_uploadfile_annotation...")
++    assert is_uploadfile_or_nonable_uploadfile_annotation(MyUploadFile) is True
++    assert is_uploadfile_or_nonable_uploadfile_annotation(UploadFile) is True
++    assert is_uploadfile_or_nonable_uploadfile_annotation(int) is False
++    print("is_uploadfile_or_nonable_uploadfile_annotation passed!")
++
++def test_is_bytes_sequence_annotation():
++    print("Testing is_bytes_sequence_annotation...")
++    assert is_bytes_sequence_annotation(MyBytesList) is True
++    assert is_bytes_sequence_annotation(List[bytes]) is True
++    assert is_bytes_sequence_annotation(MyList[int]) is False
++    print("is_bytes_sequence_annotation passed!")
++
++def test_is_uploadfile_sequence_annotation():
++    print("Testing is_uploadfile_sequence_annotation...")
++    assert is_uploadfile_sequence_annotation(MyUploadFileList) is True
++    assert is_uploadfile_sequence_annotation(List[UploadFile]) is True
++    assert is_uploadfile_sequence_annotation(MyList[int]) is False
++    print("is_uploadfile_sequence_annotation passed!")
++
++def test_annotation_is_pydantic_v1():
++    print("Testing annotation_is_pydantic_v1...")
++    # We need a Pydantic v1 model for this.
++    # Since we are in a test, let's try to import it.
++    try:
++        from pydantic import v1 as pydantic_v1
++        class MyModel(pydantic_v1.BaseModel):
++            x: int
++        
++        type MyModelAlias = MyModel
++        assert annotation_is_pydantic_v1(MyModelAlias) is True
++        assert annotation_is_pydantic_v1(MyModel) is True
++        assert annotation_is_pydantic_v1(int) is False
++    except ImportError:
++        print("Pydantic v1 not available, skipping test_annotation_is_pydantic_v1")
++
++if __name__ == "__main__":
++    try:
++        test_unwrap_type_alias()
++        test_field_annotation_is_sequence()
++        test_field_annotation_is_complex()
++        test_field_annotation_is_scalar_sequence()
++        test_is_bytes_or_nonable_bytes_annotation()
++        test_is_uploadfile_or_nonable_uploadfile_annotation()
++        test_is_bytes_sequence_annotation()
++        test_is_uploadfile_sequence_annotation()
++        test_annotation_is_pydantic_v1()
++        print("\nAll tests passed!")
++    except AssertionError as e:
++        print(f"\nTest failed!")
++        raise e

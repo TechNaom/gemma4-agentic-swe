@@ -1,0 +1,387 @@
+diff --git a/fastapi/dependencies/utils.py b/fastapi/dependencies/utils.py
+index dc663f54..6363e90f 100644
+--- a/fastapi/dependencies/utils.py
++++ b/fastapi/dependencies/utils.py
+@@ -872,20 +872,17 @@ async def _extract_form_body(
+     received_body: FormData,
+ ) -> Dict[str, Any]:
+     values = {}
+-    first_field = body_fields[0]
+-    first_field_info = first_field.field_info
+-
+     for field in body_fields:
+         value = _get_multidict_value(field, received_body)
+         if (
+-            isinstance(first_field_info, params.File)
++            isinstance(field.field_info, params.File)
+             and is_bytes_field(field)
+             and isinstance(value, UploadFile)
+         ):
+             value = await value.read()
+         elif (
+             is_bytes_sequence_field(field)
+-            and isinstance(first_field_info, params.File)
++            and isinstance(field.field_info, params.File)
+             and value_is_sequence(value)
+         ):
+             # For types
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..6f90643c
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,30 @@
++
++from fastapi import FastAPI, File, Form
++from fastapi.testclient import TestClient
++import pytest
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(form_data: str = Form(...), file: bytes = File(...)):
++    return {"form_data": form_data, "file_size": len(file)}
++
++client = TestClient(app)
++
++def test_upload_form_then_file():
++    # This should now succeed
++    response = client.post(
++        "/upload",
++        data={"form_data": "hello"},
++        files={"file": b"world"}
++    )
++    assert response.status_code == 200
++    assert response.json() == {"form_data": "hello", "file_size": 5}
++
++if __name__ == "__main__":
++    try:
++        test_upload_form_then_file()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e
+diff --git a/repro_bytes_list.py b/repro_bytes_list.py
+new file mode 100644
+index 00000000..8192ada7
+--- /dev/null
++++ b/repro_bytes_list.py
+@@ -0,0 +1,24 @@
++import pytest
++from fastapi import FastAPI, File, Form, UploadFile
++from fastapi.testclient import TestClient
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test-bytes-list")
++async def test_bytes_list(files: List[bytes] = File(...)):
++    return {"files": [f.decode() if isinstance(f, bytes) else str(f) for f in files]}
++
++client = TestClient(app)
++
++def test_bytes_list():
++    # Test with multiple files
++    response = client.post(
++        "/test-bytes-list",
++        files=[("files", b"file1"), ("files", b"file2")]
++    )
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    test_bytes_list()
+diff --git a/repro_list.py b/repro_list.py
+new file mode 100644
+index 00000000..d1ed0d2f
+--- /dev/null
++++ b/repro_list.py
+@@ -0,0 +1,31 @@
++
++from fastapi import FastAPI, File, Form
++from fastapi.testclient import TestClient
++from typing import List
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(form_data: str = Form(...), files: List[bytes] = File(...)):
++    return {"form_data": form_data, "files_sizes": [len(f) for f in files]}
++
++client = TestClient(app)
++
++def test_upload_form_then_files():
++    response = client.post(
++        "/upload",
++        data={"form_data": "hello"},
++        files={"files": [("f1", b"world1"), ("f2", b"world2")]}
++    )
++    print(f"Status code: {response.status_code}")
++    print(f"Response body: {response.json()}")
++    assert response.status_code == 200
++    assert response.json() == {"form_data": "hello", "files_sizes": [6, 6]}
++
++if __name__ == "__main__":
++    try:
++        test_upload_form_then_files()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e
+diff --git a/repro_mixed_bytes_list.py b/repro_mixed_bytes_list.py
+new file mode 100644
+index 00000000..5d2016c7
+--- /dev/null
++++ b/repro_mixed_bytes_list.py
+@@ -0,0 +1,39 @@
++import pytest
++from fastapi import FastAPI, File, Form
++from fastapi.testclient import TestClient
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test-mixed")
++async def test_mixed(
++    name: str = Form(...),
++    files: List[bytes] = File(...)
++):
++    return {"name": name, "files": [f.decode() if isinstance(f, bytes) else str(f) for f in files]}
++
++client = TestClient(app)
++
++def test_mixed_form_first():
++    # Form before File
++    response = client.post(
++        "/test-mixed",
++        data={"name": "test"},
++        files=[("files", b"file1"), ("files", b"file2")]
++    )
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++
++def test_mixed_file_first():
++    # File before Form
++    response = client.post(
++        "/test-mixed",
++        data={"name": "test"},
++        files=[("files", b"file1"), ("files", b"file2")]
++    )
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    test_mixed_form_first()
++    test_mixed_file_first()
+diff --git a/repro_mixed_uploadfile_list.py b/repro_mixed_uploadfile_list.py
+new file mode 100644
+index 00000000..ade03076
+--- /dev/null
++++ b/repro_mixed_uploadfile_list.py
+@@ -0,0 +1,31 @@
++import pytest
++from fastapi import FastAPI, File, Form, UploadFile
++from fastapi.testclient import TestClient
++from typing import List
++
++app = FastAPI()
++
++@app.post("/test-mixed")
++async def test_mixed(
++    name: str = Form(...),
++    files: List[UploadFile] = File(...)
++):
++    content = []
++    for f in files:
++        content.append((await f.read()).decode())
++    return {"name": name, "files": content}
++
++client = TestClient(app)
++
++def test_mixed_form_first():
++    # Form before File
++    response = client.post(
++        "/test-mixed",
++        data={"name": "test"},
++        files=[("files", ("file1.txt", b"file1")), ("files", ("file2.txt", b"file2"))]
++    )
++    print(f"Response: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    test_mixed_form_first()
+diff --git a/repro_reverse.py b/repro_reverse.py
+new file mode 100644
+index 00000000..1d73afaa
+--- /dev/null
++++ b/repro_reverse.py
+@@ -0,0 +1,29 @@
++
++from fastapi import FastAPI, File, Form
++from fastapi.testclient import TestClient
++import pytest
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(file: bytes = File(...), form_data: str = Form(...)):
++    return {"form_data": form_data, "file_size": len(file)}
++
++client = TestClient(app)
++
++def test_upload_file_then_form():
++    response = client.post(
++        "/upload",
++        data={"form_data": "hello"},
++        files={"file": b"world"}
++    )
++    assert response.status_code == 200
++    assert response.json() == {"form_data": "hello", "file_size": 5}
++
++if __name__ == "__main__":
++    try:
++        test_upload_file_then_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        raise e
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..3d0702ca
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, File, Form, UploadFile
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(form_data: str = Form(...), file: UploadFile = File(...)):
++    return {"form_data": form_data, "file": file.filename}
++
++client = TestClient(app)
++
++def test_file_after_form():
++    response = client.post(
++        "/upload",
++        data={"form_data": "test"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"Response status code: {response.status_code}")
++    print(f"Response body: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    try:
++        test_file_after_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import sys
++        sys.exit(1)
+diff --git a/reproduce_issue_2.py b/reproduce_issue_2.py
+new file mode 100644
+index 00000000..aa50b827
+--- /dev/null
++++ b/reproduce_issue_2.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, File, Form, UploadFile
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(form_data: str = Form(...), file1: UploadFile = File(...), file2: UploadFile = File(...)):
++    return {"form_data": form_data, "file1": file1.filename, "file2": file2.filename}
++
++client = TestClient(app)
++
++def test_multiple_files_after_form():
++    response = client.post(
++        "/upload",
++        data={"form_data": "test"},
++        files={"file1": ("test1.txt", b"content1"), "file2": ("test2.txt", b"content2")}
++    )
++    print(f"Response status code: {response.status_code}")
++    print(f"Response body: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    try:
++        test_multiple_files_after_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import sys
++        sys.exit(1)
+diff --git a/reproduce_issue_3.py b/reproduce_issue_3.py
+new file mode 100644
+index 00000000..0b9130cc
+--- /dev/null
++++ b/reproduce_issue_3.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, File, Form
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(form_data: str = Form(...), file: bytes = File(...)):
++    return {"form_data": form_data, "file_len": len(file)}
++
++client = TestClient(app)
++
++def test_file_bytes_after_form():
++    response = client.post(
++        "/upload",
++        data={"form_data": "test"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"Response status code: {response.status_code}")
++    print(f"Response body: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    try:
++        test_file_bytes_after_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import sys
++        sys.exit(1)
+diff --git a/reproduce_issue_4.py b/reproduce_issue_4.py
+new file mode 100644
+index 00000000..5557a7ef
+--- /dev/null
++++ b/reproduce_issue_4.py
+@@ -0,0 +1,29 @@
++from fastapi import FastAPI, File, Form
++from fastapi.testclient import TestClient
++
++app = FastAPI()
++
++@app.post("/upload")
++async def upload(file: bytes = File(...), form_data: str = Form(...)):
++    return {"form_data": form_data, "file_len": len(file)}
++
++client = TestClient(app)
++
++def test_file_bytes_before_form():
++    response = client.post(
++        "/upload",
++        data={"form_data": "test"},
++        files={"file": ("test.txt", b"content")}
++    )
++    print(f"Response status code: {response.status_code}")
++    print(f"Response body: {response.json()}")
++    assert response.status_code == 200
++
++if __name__ == "__main__":
++    try:
++        test_file_bytes_before_form()
++        print("Test passed!")
++    except Exception as e:
++        print(f"Test failed: {e}")
++        import sys
++        sys.exit(1)
