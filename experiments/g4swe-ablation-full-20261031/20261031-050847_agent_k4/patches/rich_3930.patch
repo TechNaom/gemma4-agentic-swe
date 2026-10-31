@@ -1,0 +1,160 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..7b12c8ad
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,55 @@
++import unicodedata
++from rich.cells import cell_len, set_cell_size, chop_cells, split_graphemes
++
++def test_split_graphemes():
++    print("Testing split_graphemes...")
++    test_cases = [
++        ("hello", ["h", "e", "l", "l", "o"]),
++        ("a\u0301", ["a\u0301"]), # combining mark
++        ("👨‍👩‍👧‍👦", ["👨‍👩‍👧‍👦"]), # ZWJ sequence
++        ("a\u200d b", ["a\u200d", " ", "b"]), # ZWJ
++        ("a\ufe0f", ["a\ufe0f"]), # variation selector
++    ]
++    for text, expected in test_cases:
++        result = split_graphemes(text)
++        print(f"Text: {text!r}, Expected: {expected!r}, Result: {result!r}")
++        assert result == expected
++
++def test_set_cell_size():
++    print("\nTesting set_cell_size...")
++    test_cases = [
++        ("hello", 3, "hel"),
++        ("hello", 7, "hello  "),
++        ("a\u0301", 1, "a\u0301"), # combining mark, width 1
++        ("a\u0301", 0, ""),
++        ("👨‍👩‍👧‍👦", 2, "👨‍👩‍👧‍👦"), # ZWJ sequence, width 2
++        ("👨‍👩‍👧‍👦", 1, " "), # ZWJ sequence, width 2, total 1 -> should return space
++    ]
++    for text, total, expected in test_cases:
++        result = set_cell_size(text, total)
++        print(f"Text: {text!r}, Total: {total}, Expected: {expected!r}, Result: {result!r}")
++        assert result == expected
++
++def test_chop_cells():
++    print("\nTesting chop_cells...")
++    test_cases = [
++        ("hello", 3, ["hel", "lo"]),
++        ("a\u0301b", 1, ["a\u0301", "b"]), # combining mark, width 1
++        ("👨‍👩‍👧‍👦", 1, ["👨‍👩‍👧‍👦"]), # ZWJ sequence, width 2, width 1 -> should not split
++        # Wait, if width is 1 and grapheme is 2, it should still be on its own line.
++        # Let's check the implementation of chop_cells.
++    ]
++    for text, width, expected in test_cases:
++        result = chop_cells(text, width)
++        print(f"Text: {text!r}, Width: {width}, Expected: {expected!r}, Result: {result!r}")
++        assert result == expected
++
++if __name__ == "__main__":
++    try:
++        test_split_graphemes()
++        test_set_cell_size()
++        test_chop_cells()
++        print("\nAll tests passed!")
++    except AssertionError as e:
++        print(f"\nTest failed!")
++        raise e
+diff --git a/rich/cells.py b/rich/cells.py
+index a8546227..8a9627ee 100644
+--- a/rich/cells.py
++++ b/rich/cells.py
+@@ -1,3 +1,4 @@
++import unicodedata
+ from __future__ import annotations
+ 
+ from functools import lru_cache
+@@ -30,6 +31,34 @@ _SINGLE_CELLS = frozenset(
+ _is_single_cell_widths: Callable[[str], bool] = _SINGLE_CELLS.issuperset
+ 
+ 
++def split_graphemes(text: str) -> list[str]:
++    """Split a string into a list of graphemes.
++
++    Args:
++        text (str): The text to split.
++
++    Returns:
++        list[str]: A list of graphemes.
++    """
++    graphemes = []
++    for char in text:
++        if not graphemes:
++            graphemes.append(char)
++            continue
++
++        prev_char = graphemes[-1][-1]
++        if (
++            unicodedata.combining(char)
++            or char == "\u200d"
++            or 0xfe00 <= ord(char) <= 0xfe0f
++            or prev_char == "\u200d"
++        ):
++            graphemes[-1] += char
++        else:
++            graphemes.append(char)
++    return graphemes
++
++
+ @lru_cache(4096)
+ def cached_cell_len(text: str) -> int:
+     """Get the number of cells required to display text.
+@@ -110,16 +139,17 @@ def set_cell_size(text: str, total: int) -> str:
+     if cell_size < total:
+         return text + " " * (total - cell_size)
+ 
++    graphemes = split_graphemes(text)
+     start = 0
+-    end = len(text)
++    end = len(graphemes)
+ 
+     # Binary search until we find the right size
+     while True:
+         pos = (start + end) // 2
+-        before = text[: pos + 1]
++        before = "".join(graphemes[: pos + 1])
+         before_len = cell_len(before)
+-        if before_len == total + 1 and cell_len(before[-1]) == 2:
+-            return before[:-1] + " "
++        if before_len == total + 1 and cell_len(graphemes[pos]) == 2:
++            return "".join(graphemes[:pos]) + " "
+         if before_len == total:
+             return before
+         if before_len > total:
+@@ -142,25 +172,23 @@ def chop_cells(
+         A list of strings such that each string in the list has cell width
+         less than or equal to the available width.
+     """
+-    _get_character_cell_size = get_character_cell_size
+     lines: list[list[str]] = [[]]
+ 
+     append_new_line = lines.append
+     append_to_last_line = lines[-1].append
+-
+     total_width = 0
+ 
+-    for character in text:
+-        cell_width = _get_character_cell_size(character)
+-        char_doesnt_fit = total_width + cell_width > width
++    for grapheme in split_graphemes(text):
++        grapheme_width = sum(map(get_character_cell_size, grapheme))
++        char_doesnt_fit = total_width + grapheme_width > width
+ 
+         if char_doesnt_fit:
+-            append_new_line([character])
++            append_new_line([grapheme])
+             append_to_last_line = lines[-1].append
+-            total_width = cell_width
++            total_width = grapheme_width
+         else:
+-            append_to_last_line(character)
+-            total_width += cell_width
++            append_to_last_line(grapheme)
++            total_width += grapheme_width
+ 
+     return ["".join(line) for line in lines]
+ 

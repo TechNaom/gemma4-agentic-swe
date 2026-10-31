@@ -1,0 +1,77 @@
+diff --git a/fastapi/exceptions.py b/fastapi/exceptions.py
+index 0620428b..74f0b96d 100644
+--- a/fastapi/exceptions.py
++++ b/fastapi/exceptions.py
+@@ -154,31 +154,49 @@ class DependencyScopeError(FastAPIError):
+     """
+ 
+ 
++class EndpointContext:
++    def __init__(self, filepath: str, line_number: int, function_name: str, methods: set[str], route: str):
++        self.filepath = filepath
++        self.line_number = line_number
++        self.function_name = function_name
++        self.methods = methods
++        self.route = route
++
++    def __str__(self) -> str:
++        methods_str = ", ".join(sorted(self.methods))
++        return f"{self.filepath}:{self.line_number} in {self.function_name} ({methods_str} {self.route})"
++
++
+ class ValidationException(Exception):
+-    def __init__(self, errors: Sequence[Any]) -> None:
++    def __init__(self, errors: Sequence[Any], *, context: Optional[Any] = None) -> None:
+         self._errors = errors
++        self.context = context
+ 
+     def errors(self) -> Sequence[Any]:
+         return self._errors
+ 
++    def __str__(self) -> str:
++        message = f"{len(self._errors)} validation errors:\n"
++        for err in self._errors:
++            message += f"  {err}\n"
++        if self.context:
++            message += f"Endpoint context: {self.context}\n"
++        return message
++
+ 
+ class RequestValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(self, errors: Sequence[Any], *, body: Any = None, context: Optional[Any] = None) -> None:
++        super().__init__(errors, context=context)
+         self.body = body
+ 
+ 
+ class WebSocketRequestValidationError(ValidationException):
+-    pass
++    def __init__(self, errors: Sequence[Any], *, context: Optional[Any] = None) -> None:
++        super().__init__(errors, context=context)
+ 
+ 
+ class ResponseValidationError(ValidationException):
+-    def __init__(self, errors: Sequence[Any], *, body: Any = None) -> None:
+-        super().__init__(errors)
++    def __init__(self, errors: Sequence[Any], *, body: Any = None, context: Optional[Any] = None) -> None:
++        super().__init__(errors, context=context)
+         self.body = body
+ 
+-    def __str__(self) -> str:
+-        message = f"{len(self._errors)} validation errors:\n"
+-        for err in self._errors:
+-            message += f"  {err}\n"
+-        return message
+diff --git a/fastapi/routing.py b/fastapi/routing.py
+index c10175b1..d0c698d0 100644
+--- a/fastapi/routing.py
++++ b/fastapi/routing.py
+@@ -46,6 +46,7 @@ from fastapi.dependencies.utils import (
+ )
+ from fastapi.encoders import jsonable_encoder
+ from fastapi.exceptions import (
++    EndpointContext,
+     FastAPIError,
+     RequestValidationError,
+     ResponseValidationError,

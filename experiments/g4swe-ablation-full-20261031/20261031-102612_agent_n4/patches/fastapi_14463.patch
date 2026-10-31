@@ -1,0 +1,57 @@
+diff --git a/reproduce_issue.py b/reproduce_issue.py
+new file mode 100644
+index 00000000..8c8f4c4a
+--- /dev/null
++++ b/reproduce_issue.py
+@@ -0,0 +1,51 @@
++from fastapi import FastAPI
++from pydantic import BaseModel
++import json
++from fastapi.testclient import TestClient
++
++class ModelA(BaseModel):
++    a: str
++
++class ModelB(BaseModel):
++    b: str
++
++app = FastAPI(
++    responses={
++        500: {
++            'model': ModelA | ModelB,
++            'content': {"application/json": {
++                'examples': {"Case A": {"value": "a"}}
++            }}
++        }
++    }
++)
++
++@app.get('/route1')
++def route1():
++    return "test"
++
++@app.get('/route2')
++def route2():
++    return "test"
++
++@app.get('/route3')
++def route3():
++    return "test"
++
++client = TestClient(app)
++
++def test_openapi_duplication():
++    openapi_json = app.openapi()
++    responses_500 = openapi_json["paths"]["/route1"]["get"]["responses"]["500"]
++    any_of = responses_500["content"]["application/json"]["schema"]["anyOf"]
++    print(f"Number of refs in anyOf: {len(any_of)}")
++    assert len(any_of) == 2, f"Expected 2 refs, got {len(any_of)}"
++
++if __name__ == "__main__":
++    try:
++        test_openapi_duplication()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
++    except Exception as e:
++        print(f"An error occurred: {e}")
