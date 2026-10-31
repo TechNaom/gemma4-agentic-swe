@@ -1,0 +1,50 @@
+diff --git a/rich/console.py b/rich/console.py
+index cdfac282..6d4a6c22 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -873,6 +873,9 @@ class Console:
+         Returns:
+             str: Console output.
+         """
++        if self.record:
++            with self._record_buffer_lock:
++                self._record_buffer.extend(self._buffer[:])
+         render_result = self._render_buffer(self._buffer)
+         del self._buffer[:]
+         self._exit_buffer()
+@@ -2029,11 +2032,11 @@ class Console:
+         """Write the buffer to the output file."""
+ 
+         with self._lock:
+-            if self.record:
+-                with self._record_buffer_lock:
+-                    self._record_buffer.extend(self._buffer[:])
+-
+             if self._buffer_index == 0:
++                if self.record:
++                    with self._record_buffer_lock:
++                        self._record_buffer.extend(self._buffer[:])
++
+                 if self.is_jupyter:  # pragma: no cover
+                     from .jupyter import display
+ 
+diff --git a/test_capture_record.py` b/test_capture_record.py`
+new file mode 100644
+index 00000000..5ed2d11a
+--- /dev/null
++++ b/test_capture_record.py`
+@@ -0,0 +1,14 @@
++from rich.console import Console
++
++def test_capture_record():
++    console = Console(record=True)
++    with console.capture() as capture:
++        console.print("Hello")
++    
++    captured = capture.get()
++    recorded = console.export_text()
++    print(f"Captured: {captured!r}")
++    print(f"Recorded: {recorded!r}")
++
++if __name__ == "__main__":
++    test_capture_record()

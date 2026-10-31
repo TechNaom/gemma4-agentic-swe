@@ -1,0 +1,70 @@
+diff --git a/scripts/release.py b/scripts/release.py
+new file mode 100644
+index 000000000..88c254a4f
+--- /dev/null
++++ b/scripts/release.py
+@@ -0,0 +1,64 @@
++import argparse
++import re
++import sys
++import subprocess
++from pathlib import Path
++
++VERSION_FILE = Path("fastapi/__init__.py")
++RELEASE_NOTES_FILE = Path("docs/en/docs/release-notes.md")
++
++def update_version(version: str):
++    content = VERSION_FILE.read_text()
++    new_content = re.sub(r'__version__ = ".*"', f'__version__ = "{version}"', content)
++    VERSION_FILE.write_text(new_content)
++    print(f"Updated version to {version} in {VERSION_FILE}")
++
++def prepare_release_notes(version: str):
++    content = RELEASE_NOTES_FILE.read_text()
++    
++    # Find "## Latest Changes"
++    start_idx = content.find("## Latest Changes")
++    if start_idx == -1:
++        print("Could not find '## Latest Changes' section")
++        return
++
++    # Find the next "## "
++    end_idx = content.find("\n## ", start_idx + len("## Latest Changes"))
++    
++    if end_idx == -1:
++        # "Latest Changes" is the last section
++        changes_block = content[start_idx:]
++        rest_of_file = ""
++    else:
++        changes_block = content[start_idx:end_idx]
++        rest_of_file = content[end_idx:]
++
++    # Extract changes (remove "## Latest Changes" header)
++    changes = changes_block.replace("## Latest Changes", "", 1).strip()
++    
++    # Create the new version section
++    # We add the version header, then the changes, then the "Latest Changes" header back.
++    new_section = f"## {version}\n\n{changes}\n\n## Latest Changes\n\n"
++    
++    # Construct the new content
++    prefix = content[:start_idx]
++    new_content = prefix + new_section + rest_of_file
++    
++    RELEASE_NOTES_FILE.write_text(new_content)
++    print(f"Updated release notes for version {version}")
++
++def main():
++    parser = argparse.ArgumentParser(description="Automate release preparation")
++    parser.add_argument("version", help="The new version to set (e.g. 0.137.0)")
++    args = parser.parse_args()
++    
++    update_version(args.version)
++    prepare_release_notes(args.version)
++    
++    # Now run add_latest_release_date.py
++    print("Running scripts/add_latest_release_date.py...")
++    subprocess.run([sys.executable, "scripts/add_latest_release_date.py"], check=True)
++    print("Release preparation complete!")
++
++if __name__ == "__main__":
++    main()

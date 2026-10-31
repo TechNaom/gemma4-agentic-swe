@@ -1,0 +1,39 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..3b653d8d
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,19 @@
++from rich.console import Console
++from rich.segment import Segment
++import io
++
++output = io.StringIO()
++console = Console(file=output, force_terminal=False)
++
++# We want to see what segments are yielded.
++# We can't easily intercept them from console.print, 
++# but we can call console.render directly.
++
++from rich.text import Text
++t = Text("", end="")
++segments = list(console.render(t))
++print(f"Test 1 (Text('', end='')): {segments}")
++
++t = Text("", end="\n")
++segments = list(console.render(t))
++print(f"Test 2 (Text('', end='\\n')): {segments}")
+diff --git a/rich/text.py b/rich/text.py
+index 7e087a4e..99d14442 100644
+--- a/rich/text.py
++++ b/rich/text.py
+@@ -729,7 +729,8 @@ class Text(JupyterMixin):
+         _Segment = Segment
+         text = self.plain
+         if not self._spans:
+-            yield Segment(text)
++            if text:
++                yield Segment(text)
+             if end:
+                 yield _Segment(end)
+             return

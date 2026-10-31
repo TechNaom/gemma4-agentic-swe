@@ -1,0 +1,43 @@
+diff --git a/rich/console.py b/rich/console.py
+index 5929fb1c..afb3a519 100644
+--- a/rich/console.py
++++ b/rich/console.py
+@@ -731,8 +731,15 @@ class Console:
+             if no_color is not None
+             else self._environ.get("NO_COLOR", "") != ""
+         )
++        tty_interactive = self._environ.get("TTY_INTERACTIVE", "")
++        if tty_interactive == "0":
++            default_interactive = False
++        elif tty_interactive == "1":
++            default_interactive = True
++        else:
++            default_interactive = (self.is_terminal and not self.is_dumb_terminal)
+         self.is_interactive = (
+-            (self.is_terminal and not self.is_dumb_terminal)
++            default_interactive
+             if force_interactive is None
+             else force_interactive
+         )
+diff --git a/rich/live.py b/rich/live.py
+index 85faca80..623b9513 100644
+--- a/rich/live.py
++++ b/rich/live.py
+@@ -132,7 +132,7 @@ class Live(JupyterMixin, RenderHook):
+                     # let this be displayed in the terminal).
+                     self.stop()
+                     raise
+-            if self.auto_refresh:
++            if self.auto_refresh and self.console.is_interactive:
+                 self._refresh_thread = _RefreshThread(self, self.refresh_per_second)
+                 self._refresh_thread.start()
+ 
+@@ -256,7 +256,7 @@ class Live(JupyterMixin, RenderHook):
+                     with self.ipy_widget:
+                         self.ipy_widget.clear_output(wait=True)
+                         self.console.print(self._live_render.renderable)
+-            elif self.console.is_terminal and not self.console.is_dumb_terminal:
++            elif self.console.is_interactive:
+                 with self.console:
+                     self.console.print(Control())
+             elif (

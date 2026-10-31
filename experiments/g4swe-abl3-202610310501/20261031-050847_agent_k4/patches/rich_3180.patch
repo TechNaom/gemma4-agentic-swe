@@ -1,0 +1,60 @@
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..28061fc3
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,32 @@
++from rich._wrap import divide_line
++from rich.console import Console
++
++def test_wrap():
++    text = "这是一个测试" # 8 cells
++    width = 3
++    # "这是" (4 cells) -> should wrap
++    # "这" (2), "是" (2)
++    # If width is 3, "这" fits, "是" doesn't.
++    # "这" (2)
++    # "是" (2)
++    # "个" (2)
++    # "试" (2)
++    # "験" (2)
++    
++    print(f"Text: {text}, Width: {width}")
++    print(f"Divides: {divide_line(text, width)}")
++
++    # Test with a word that is longer than width
++    text2 = "abcdefghij" # 10 cells
++    width2 = 3
++    print(f"Text: {text2}, Width: {width2}")
++    print(f"Divides: {divide_line(text2, width2)}")
++
++    # Test with CJK word longer than width
++    text3 = "这是一个测试" # 8 cells
++    width3 = 1
++    print(f"Text: {text3}, Width: {width3}")
++    print(f"Divides: {divide_line(text3, width3)}")
++
++if __name__ == "__main__":
++    test_wrap()
+diff --git a/rich/cells.py b/rich/cells.py
+index 9354f9e3..a05db42f 100644
+--- a/rich/cells.py
++++ b/rich/cells.py
+@@ -119,8 +119,6 @@ def set_cell_size(text: str, total: int) -> str:
+             start = pos
+ 
+ 
+-# TODO: This is inefficient
+-# TODO: This might not work with CWJ type characters
+ def chop_cells(text: str, max_size: int, position: int = 0) -> List[str]:
+     """Break text in to equal (cell) length strings, returning the characters in reverse
+     order"""
+@@ -141,7 +139,7 @@ def chop_cells(text: str, max_size: int, position: int = 0) -> List[str]:
+             total_size += size
+             append(character)
+ 
+-    return ["".join(line) for line in lines]
++    return ["".join(line[::-1]) for line in lines]
+ 
+ 
+ if __name__ == "__main__":  # pragma: no cover

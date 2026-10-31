@@ -1,0 +1,61 @@
+diff --git a/reproduce_bug.py b/reproduce_bug.py
+new file mode 100644
+index 00000000..b090b816
+--- /dev/null
++++ b/reproduce_bug.py
+@@ -0,0 +1,30 @@
++from rich.console import Console, ConsoleOptions
++from rich.padding import Padding
++from rich.segment import Segment
++
++def test_padding_width_exceeds_max_width():
++    # Console width 10
++    console = Console(width=10)
++    
++    # Padding left 6, right 6. Total padding 12.
++    # This should be capped at 10.
++    p = Padding("Hello", pad=(0, 6, 0, 6))
++    
++    # We want to see what happens when max_width is 10.
++    # Padding.__rich_console__ will be called with options.max_width = 10.
++    
++    # To simulate this, we can use console.render_lines
++    lines = console.render_lines(p)
++    
++    for i, line in enumerate(lines):
++        # Calculate total width of the line
++        width = sum(len(segment.text) for segment in line)
++        print(f"Line {i} width: {width}")
++        assert width <= 10, f"Line {i} width {width} exceeds max_width 10"
++
++if __name__ == "__main__":
++    try:
++        test_padding_width_exceeds_max_width()
++        print("Test passed!")
++    except AssertionError as e:
++        print(f"Test failed: {e}")
+diff --git a/rich/padding.py b/rich/padding.py
+index d1aa01be..66ace360 100644
+--- a/rich/padding.py
++++ b/rich/padding.py
+@@ -97,12 +97,17 @@ class Padding(JupyterMixin):
+         lines = console.render_lines(
+             self.renderable, render_options, style=style, pad=True
+         )
++        if not lines and width > 0:
++            lines = [[]]
+         _Segment = Segment
+ 
+-        left = _Segment(" " * self.left, style) if self.left else None
++        actual_left = min(self.left, width)
++        actual_right = min(self.right, width - actual_left)
++
++        left = _Segment(" " * actual_left, style) if actual_left else None
+         right = (
+-            [_Segment(f'{" " * self.right}', style), _Segment.line()]
+-            if self.right
++            [_Segment(f'{" " * actual_right}', style), _Segment.line()]
++            if actual_right
+             else [_Segment.line()]
+         )
+         blank_line: Optional[List[Segment]] = None

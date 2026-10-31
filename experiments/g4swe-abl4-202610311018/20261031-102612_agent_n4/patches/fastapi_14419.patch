@@ -1,0 +1,129 @@
+diff --git a/fastapi/dependencies/models.py b/fastapi/dependencies/models.py
+index d6359c0f..6bdc55b3 100644
+--- a/fastapi/dependencies/models.py
++++ b/fastapi/dependencies/models.py
+@@ -43,11 +43,24 @@ class Dependant:
+     path: Optional[str] = None
+     scope: Union[Literal["function", "request"], None] = None
+ 
++    @cached_property
++    def uses_scopes(self) -> bool:
++        if self.security_scopes_param_name is not None:
++            return True
++        for dep in self.dependencies:
++            if dep.uses_scopes:
++                return True
++        return False
++
+     @cached_property
+     def cache_key(self) -> DependencyCacheKey:
++        if self.uses_scopes:
++            scopes = tuple(sorted(set(self.security_scopes or [])))
++        else:
++            scopes = ()
+         return (
+             self.call,
+-            tuple(sorted(set(self.security_scopes or []))),
++            scopes,
+             self.computed_scope or "",
+         )
+ 
+diff --git a/repro.py b/repro.py
+new file mode 100644
+index 00000000..78bb723d
+--- /dev/null
++++ b/repro.py
+@@ -0,0 +1,93 @@
++import asyncio
++from contextlib import AsyncExitStack
++from typing import Any, List
++from fastapi import Depends, Security, Request
++from fastapi.security import OAuth2PasswordBearer
++from fastapi.dependencies.utils import solve_dependencies, get_dependant
++from fastapi.dependencies.models import Dependant
++from fastapi.security.oauth2 import SecurityScopes
++
++oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
++
++async def dep_no_scopes():
++    return "no_scopes"
++
++async def dep_uses_scopes(security_scopes: SecurityScopes):
++    return f"uses_scopes: {security_scopes.scopes}"
++
++async def dep_depends_on_uses_scopes(dep=Depends(dep_uses_scopes)):
++    return f"depends_on_uses_scopes: {dep}"
++
++async def root_dep_no_scopes(dep=Depends(dep_no_scopes)):
++    return dep
++
++async def root_dep_uses_scopes(dep=Depends(dep_uses_scopes)):
++    return dep
++
++async def root_dep_depends_on_uses_scopes(dep=Depends(dep_depends_on_uses_scopes)):
++    return dep
++
++async def main():
++    # Setup for dep_no_scopes
++    dependant_no_scopes = get_dependant(path="/", call=dep_no_scopes)
++    dependant_root_no_scopes = get_dependant(path="/", call=root_dep_no_scopes)
++    # Manually add the dependency to the root dependant
++    dependant_root_no_scopes.dependencies.append(dependant_no_scopes)
++    
++    # Setup for dep_uses_scopes
++    dependant_uses_scopes = get_dependant(path="/", call=dep_uses_scopes)
++    dependant_root_uses_scopes = get_dependant(path="/", call=root_dep_uses_scopes)
++    dependant_root_uses_scopes.dependencies.append(dependant_uses_scopes)
++    
++    # Setup for dep_depends_on_uses_scopes
++    dependant_depends_on_uses_scopes = get_dependant(path="/", call=dep_depends_on_uses_scopes)
++    dependant_root_depends_on_uses_scopes = get_dependant(path="/", call=root_dep_depends_on_uses_scopes)
++    dependant_root_depends_on_uses_scopes.dependencies.append(dependant_depends_on_uses_scopes)
++
++    # Test dep_no_scopes with different scopes
++    cache_no_scopes = {}
++    request = Request({"type": "http", "scope": "test"})
++    request.scope["fastapi_inner_astack"] = AsyncExitStack()
++    request.scope["fastapi_function_astack"] = AsyncExitStack()
++    request.scope["query_string"] = b""
++    request.scope["headers"] = []
++    
++    # Case 1: No scopes
++    dependant_root_no_scopes.security_scopes = []
++    await solve_dependencies(request=request, dependant=dependant_root_no_scopes, dependency_cache=cache_no_scopes, async_exit_stack=AsyncExitStack(), embed_body_fields=False)
++    
++    # Case 2: Some scopes
++    dependant_root_no_scopes.security_scopes = ["scope1"]
++    await solve_dependencies(request=request, dependant=dependant_root_no_scopes, dependency_cache=cache_no_scopes, async_exit_stack=AsyncExitStack(), embed_body_fields=False)
++    
++    print(f"Cache size for dep_no_scopes: {len(cache_no_scopes)}")
++    # Expected: 1 (because it doesn't use scopes)
++
++    # Test dep_uses_scopes with different scopes
++    cache_uses_scopes = {}
++    # Case 1: No scopes
++    dependant_root_uses_scopes.security_scopes = []
++    await solve_dependencies(request=request, dependant=dependant_root_uses_scopes, dependency_cache=cache_uses_scopes, async_exit_stack=AsyncExitStack(), embed_body_fields=False)
++    
++    # Case 2: Some scopes
++    dependant_root_uses_scopes.security_scopes = ["scope1"]
++    await solve_dependencies(request=request, dependant=dependant_root_uses_scopes, dependency_cache=cache_uses_scopes, async_exit_stack=AsyncExitStack(), embed_body_fields=False)
++    
++    print(f"Cache size for dep_uses_scopes: {len(cache_uses_scopes)}")
++    # Expected: 2 (because it uses scopes)
++
++    # Test dep_depends_on_uses_scopes with different scopes
++    cache_depends_on_uses_scopes = {}
++    # Case 1: No scopes
++    dependant_root_depends_on_uses_scopes.security_scopes = []
++    await solve_dependencies(request=request, dependant=dependant_root_depends_on_uses_scopes, dependency_cache=cache_depends_on_uses_scopes, async_exit_stack=AsyncExitStack(), embed_body_fields=False)
++    
++    # Case 2: Some scopes
++    dependant_root_depends_on_uses_scopes.security_scopes = ["scope1"]
++    await solve_dependencies(request=request, dependant=dependant_root_depends_on_uses_scopes, dependency_cache=cache_depends_on_uses_scopes, async_exit_stack=AsyncExitStack(), embed_body_fields=False)
++    
++    print(f"Cache size for dep_depends_on_uses_scopes: {len(cache_depends_on_uses_scopes)}")
++    # Expected: 2 (because it depends on something that uses scopes)
++
++if __name__ == "__main__":
++    asyncio.run(main())
