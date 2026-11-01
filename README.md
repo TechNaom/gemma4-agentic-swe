@@ -10,7 +10,8 @@ on Kaggle. It may also feed the companion
 [Gemma 4 Developer Agent Competition](https://www.kaggle.com/competitions/gemma-4-developer-agent).
 Everything is done in the open: the method, the experiments, the raw numbers, and the parts that didn't work.
 
-> **Status: planning.** No code or results yet. The research direction is being chosen; see [docs/plan.md](docs/plan.md).
+> **Status (2 November 2026): experiments done, paper in draft.** On the 68 tasks that can tell agents apart, the plain agent
+> resolves 50% (34/68); adding the code-graph tools gives 47% (p = 0.69). Draft paper: [paper/paper.md](paper/paper.md).
 
 ## Why
 
