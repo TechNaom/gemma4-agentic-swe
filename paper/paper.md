@@ -70,6 +70,8 @@ A task can separate a working agent from a broken one only if both hold.
 | httpx | 1 | 0 | 0 | 0 |
 | **Total** | **129** | **73** | **5** | **68** |
 
+*Source: [audit-2026-10-15/README.md](https://github.com/TechNaom/gemma4-agentic-swe/blob/main/experiments/audit-2026-10-15/README.md).*
+
 Of the 56 gold failures, **34 come from two test libraries missing from the competition's wheels**
 (`inline_snapshot` in 27 tasks, `dirty_equals` in 7); 13 fail even with the reference fix, 7 time out and 2 fail
 for other reasons. Five tasks pass with no patch at all. On these 61 tasks any agent score is pure noise:
@@ -103,12 +105,17 @@ tokens. Capping output at 4,096 tokens removed every overflow in pilot 2 (0 of 7
 Pilot 2 tested whether the agent would use the tools if asked. A one-paragraph nudge raised adoption from
 0–10% to up to 90% of runs:
 
-| Config | Runs using a graph tool | Resolved |
-|---|---|---|
-| k0 / k4 (no nudge) | 0/10 · 1/10 | 8/10 · — |
-| n1 · n2 · n3 | 3/10 · 6/10 · 7/10 | 6/10 each |
-| n4 (all three) | 5/10 | 8/10 |
-| n5 (+ sub-agent) | 9/10 | 6/10 |
+| Config | Runs using a graph tool | Resolved | Mean tokens | First source edit (call #) |
+|---|---|---|---|---|
+| k0 (no graph tools) | 0/10 | 8/10 | 286k | 17.1 |
+| k4 (all three, no nudge) | 1/10 | 7/10 | 366k | 17.9 |
+| n1 (`get_code_neighbors`) | 3/10 | 6/10 | 381k | 24.8 |
+| n2 (`search_similar_code`) | 6/10 | 6/10 | 339k | 19.6 |
+| n3 (`get_code_subgraph`) | 7/10 | 6/10 | 349k | 23.3 |
+| n4 (all three) | 5/10 | 8/10 | 329k | 20.5 |
+| n5 (all three + sub-agent) | 9/10 | 6/10 | 391k | 26.4 |
+
+*Source: [g4swe-pilot2-202610240552/SUMMARY.md](https://github.com/TechNaom/gemma4-agentic-swe/blob/main/experiments/g4swe-pilot2-202610240552/SUMMARY.md).*
 
 Nudged agents spent more calls and tokens and reached their first source edit later. n1, n2, n3 and n5 each lost
 two tasks that k0 solved and gained none.
@@ -131,6 +138,8 @@ Paired against k0 on the same tasks (exact McNemar test on the tasks only one co
 |---|---|---|---|---|---|
 | k4 vs k0 (68 tasks) | 30 | 4 | 2 | 32 | 0.69 |
 | n4 vs k0 (32 tasks) | 13 | 3 | 1 | 15 | 0.62 |
+
+*Source: [g4swe-ablation-full-20261031/SUMMARY.md](https://github.com/TechNaom/gemma4-agentic-swe/blob/main/experiments/g4swe-ablation-full-20261031/SUMMARY.md).*
 
 Neither difference is significant, but every measurement points the same way. Offering the graph tools did not
 help, and the agent hardly touched them (4 of 68 runs). Each additional capability costs more tool calls, more
@@ -168,6 +177,8 @@ tests accept.
 | Flip a comparison | 26 | 2 (8%) |
 | Remove a `raise` | 6 | 0 (0%) |
 | **Total** | **163** | **35 (21%)** |
+
+*Source: [faults-2026-10-23/README.md](https://github.com/TechNaom/gemma4-agentic-swe/blob/main/experiments/faults-2026-10-23/README.md); hand review in `escaped_review.md`.*
 
 Not every escape is a real miss: some mutants change code without changing behaviour (an *equivalent mutant*,
 for example `return False` becoming `return None` where the result is only used as a boolean). We reviewed all 35
