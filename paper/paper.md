@@ -1,4 +1,6 @@
-# Tools Unused, Tests Fooled: What Actually Helps a Gemma 4 Coding Agent, and Can We Trust the Score?
+# Tools Unused, Tests Fooled
+
+### What actually helps a Gemma 4 coding agent, and can we trust the score?
 
 **Manohar Papasani** · [github.com/TechNaom/gemma4-agentic-swe](https://github.com/TechNaom/gemma4-agentic-swe)
 
@@ -217,7 +219,28 @@ was collected this way, which is what lets each table link to the exact files th
 Following our own evidence, our main-competition entry is the plain **k0** agent: no graph tools, a capped
 output length, and nothing that did not earn its place in a measurement.
 
-## 8. Limitations
+## 8. Related work
+
+**Benchmarks for coding agents.** SWE-bench [1] scores an agent by applying its patch and running the
+repository's own tests; the competition harness follows the same design. SWE-bench Verified [2] showed that
+many original tasks were unfair or unsolvable and had them screened by human annotators. Our audit is the
+automated counterpart for this benchmark: a gold-and-empty check finds 61 of 129 tasks that cannot
+discriminate, with no human labelling.
+
+**Agents and repository structure.** SWE-agent [3] showed that the design of the agent-computer interface
+matters as much as the model. AutoCodeRover [4] searches the program's structure (classes and methods) to
+localise bugs, and RepoGraph [5] and CodexGraph [6] give agents a repository-level code graph, all reporting
+gains with large hosted models. Agentless [7] reached competitive results with a fixed pipeline and no
+free-form tool use at all. Our result sits between these: with a 31B model, offering a code graph changed
+nothing, because the model rarely chose to use it, which echoes Agentless's finding that simple
+localisation goes a long way.
+
+**Weak tests.** Mutation testing [8, 9] measures test adequacy by planting faults and counting how many the
+tests catch, and has long had to handle equivalent mutants, which we reviewed by hand. Recent work found that
+some patches SWE-bench counts as resolved are in fact wrong [10]. Study B measures the same weakness directly,
+per mutation operator, on the tests this competition scores with.
+
+## 9. Limitations
 
 Sample sizes are modest: 68 tasks, one run per configuration per task, so differences of a few tasks are not
 significant, and n4 covers 32 tasks. Results are for one model, one harness and two repositories (fastapi and
@@ -225,10 +248,29 @@ rich), all Python. The tool-use explanation in Section 4.5 is drawn from reading
 test. The mutation study covers seven operators and 62 tasks; other bug types may escape at other rates. We
 could not inspect the hidden scoring environment, so whether its audit matches ours is open.
 
-## 9. Reproducibility
+## 10. Reproducibility
 
 Everything is public in the repository: agent configurations for all 11 settings (`agents/`), the runner and
 analysis code (`src/g4swe/`), the Kaggle notebooks, the audit (`experiments/audit-2026-10-15/`), the planted-bug
 set with its review (`experiments/faults-2026-10-23/`) and every run summary
 (`experiments/g4swe-*`). Each table in this paper can be regenerated with the command recorded in its
 `SUMMARY.md`. All compute was free Kaggle GPU and CPU quota.
+
+## References
+
+1. C. E. Jimenez, J. Yang, A. Wettig, S. Yao, K. Pei, O. Press, K. Narasimhan. *SWE-bench: Can Language Models
+   Resolve Real-World GitHub Issues?* ICLR 2024.
+2. N. Chowdhury et al. *Introducing SWE-bench Verified.* OpenAI, 2024.
+3. J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan, O. Press. *SWE-agent: Agent-Computer
+   Interfaces Enable Automated Software Engineering.* NeurIPS 2024.
+4. Y. Zhang, H. Ruan, Z. Fan, A. Roychoudhury. *AutoCodeRover: Autonomous Program Improvement.* ISSTA 2024.
+5. S. Ouyang et al. *RepoGraph: Enhancing AI Software Engineering with Repository-level Code Graph.* ICLR 2025.
+6. X. Liu et al. *CodexGraph: Bridging Large Language Models and Code Repositories via Code Graph Databases.*
+   arXiv:2408.03910, 2024.
+7. C. S. Xia, Y. Deng, S. Dunn, L. Zhang. *Agentless: Demystifying LLM-based Software Engineering Agents.*
+   arXiv:2407.01489, 2024.
+8. R. A. DeMillo, R. J. Lipton, F. G. Sayward. *Hints on Test Data Selection: Help for the Practicing
+   Programmer.* IEEE Computer, 1978.
+9. Y. Jia, M. Harman. *An Analysis and Survey of the Development of Mutation Testing.* IEEE TSE, 2011.
+10. Y. Wang, M. Pradel, Z. Liu. *Are "Solved Issues" in SWE-bench Really Solved Correctly? An Empirical Study.*
+    ICSE 2026 (arXiv:2503.15223).
