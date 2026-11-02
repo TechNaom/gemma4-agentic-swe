@@ -14,10 +14,11 @@ We asked two questions. **First, do the harness's code-graph tools help?** On al
 separate a working agent from a broken one, the baseline agent with only file and shell tools resolved **50%**
 (34/68); offering the three graph tools gave **47%** (32/68, paired McNemar p = 0.69), and nudging the agent to
 use them gave **44%** (14/32, p = 0.62). The agent used a graph tool in fewer than 10% of runs unless told to,
-and using them never helped. **Second, can the score be trusted?** An audit of all 129 tasks found that only
+and neither offering nor pushing them raised the resolve rate. **Second, can the score be trusted?** An audit of all 129 tasks found that only
 **68 (53%)** are valid in the provided environment, and planting known bugs into correct fixes showed that the
-tests accept a genuinely broken fix in **24 of 163 cases (14.7%)**. We release the audit, the planted-bug set and
-a record-and-replay toolkit so that agent scores on this benchmark can be checked rather than taken on trust.
+tests accept a genuinely broken fix in **24 of 163 cases (14.7%)**. We release the audit, the planted-bug set, the
+full trace of every run and a re-verification tool, so that agent scores on this benchmark can be checked rather
+than taken on trust.
 
 ## 1. Introduction
 
@@ -36,8 +37,8 @@ part of the scoring signal is noise. Our contributions are:
    cannot discriminate between agents in this environment, mostly because two test libraries are missing.
 3. **A test-adequacy study (Study B).** 163 planted bugs across 7 mutation operators: 14.7% of broken fixes are
    accepted, so a fraction of any agent's "resolved" count may not be real.
-4. **An open, reproducible resource (A).** Recorded runs, a replay-and-re-verify toolkit, and automation that
-   collects every Kaggle run into versioned result files.
+4. **An open, reproducible resource (A).** The full step-by-step trace of every run, a tool that re-verifies any
+   saved patch on a CPU, and automation that collects every Kaggle run into versioned result files.
 
 ## 2. Setup
 
@@ -154,15 +155,16 @@ also the most accurate.
 
 ### 4.4 A cautionary note on pilots
 
-The 10-task pilot suggested **80%** for k0; on all 68 valid tasks it is **50%**. The pilot tasks were the ones we
-used while tuning the setup, and they were easier than the rest. Small, reused task sets are the main way an agent
-developer fools themselves on this benchmark, which is why we report the full set with confidence intervals.
+The 10-task pilot suggested **80%** for k0; on all 68 valid tasks it is **50%**. This was not luck in the pilot
+runs: in the full ablation k0 solved the same 8 pilot tasks again, but only 26 of the other 58 (45%). The pilot
+set was simply easier. A small task set says little about the whole benchmark, which is why we report the full set
+with confidence intervals.
 
 ### 4.5 Why the tools go unused
 
 The traces suggest a simple explanation: the model already has a reliable localisation strategy. It reads the
 issue, greps for the symbols it names with `run_command`, reads the matching files and edits. For issues that
-name the failing function or error message, which most do, that strategy reaches the right file in a few calls.
+name the failing function or error message, as many in this set do, that strategy reaches the right file in a few calls.
 A call graph answers a question the agent rarely has. When we forced the question with the nudge, the extra calls
 displaced editing and testing within the fixed budget.
 
@@ -197,16 +199,20 @@ escapes by hand: **24 are genuine bugs the tests accept**, 10 are equivalent and
 raw count.
 
 The pattern is informative. Tests catch removed exceptions and flipped comparisons well, but often miss inverted
-boolean conditions and boundary errors, which are exactly the subtle mistakes a model makes. Since a fraction of
+boolean conditions and boundary errors: small logic slips that are easy to make and hard to spot in review. Since a fraction of
 broken fixes is accepted, a reported resolve rate is an upper bound on correct fixes; a leaderboard gap of a few
 points can sit inside this margin.
 
 ## 6. Resource A: record, replay and re-verify
 
-Every run in this study is recorded: each model turn, each tool call with its arguments and output, timings,
-token counts and the final patch, one JSONL file per run, with a manifest of model, configuration and commit.
-The replayer feeds recorded responses back instead of calling the model, so a changed verifier, scoring rule or
-test can be re-applied to every past run on a CPU, at no GPU cost. The planted-bug study used this path.
+Every run in this study is recorded in full: a step-by-step trace of each task (every model message and every
+tool call with its arguments and output), the final patch, the test output, one summary row per task with
+outcome, tool calls, duration and tokens, and a manifest of model, configuration and task list.
+
+Because patches are saved, scoring is separated from generation. A `patch` mode of our runner feeds saved patches
+through the harness's own unchanged verification step, so a changed test, scoring rule or verifier can be
+re-applied to every past run on a CPU, at no GPU cost. The planted-bug study (Section 5) used exactly this path:
+163 mutated patches verified without running the model once.
 
 A GitHub Actions workflow polls the Kaggle notebooks every 30 minutes; when a run finishes it downloads the logs
 and results, writes a summary table, commits it to the repository and opens an issue. Every result in this paper
@@ -218,7 +224,7 @@ was collected this way, which is what lets each table link to the exact files th
    discriminate. Here that removed 47% of the public set.
 2. **Measure tool use, not tool availability.** An offered tool the model never calls cannot explain a result.
    Log tool calls per run and report adoption next to accuracy.
-3. **Distrust small, reused pilots.** Our 10-task pilot overstated the true rate by 30 points.
+3. **Distrust small pilots.** Our 10-task pilot overstated the full-set rate by 30 points.
 4. **Treat the resolve rate as an upper bound.** Plant bugs in correct fixes to estimate how often your tests
    accept wrong code.
 5. **Budget mechanics first.** The single largest improvement in our pilots came from capping output tokens, not
@@ -261,8 +267,8 @@ could not inspect the hidden scoring environment, so whether its audit matches o
 Everything is public in the repository: agent configurations for all 11 settings (`agents/`), the runner and
 analysis code (`src/g4swe/`), the Kaggle notebooks, the audit (`experiments/audit-2026-10-15/`), the planted-bug
 set with its review (`experiments/faults-2026-10-23/`) and every run summary
-(`experiments/g4swe-*`). Each table in this paper can be regenerated with the command recorded in its
-`SUMMARY.md`. All compute was free Kaggle GPU and CPU quota.
+(`experiments/g4swe-*`). The agent-run tables can be regenerated with the command recorded in each
+`SUMMARY.md`, and both figures with `scripts/make_figures.py`. All compute was free Kaggle GPU and CPU quota.
 
 ## References
 
