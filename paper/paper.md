@@ -4,7 +4,7 @@
 
 **Manohar Papasani** · [github.com/TechNaom/gemma4-agentic-swe](https://github.com/TechNaom/gemma4-agentic-swe)
 
-*Draft v0.1, 2 November 2026. Every number links to a file in the repository.*
+*November 2026. Every number links to a file in the repository.*
 
 ## Abstract
 
@@ -144,7 +144,7 @@ Paired against k0 on the same tasks (exact McNemar test on the tasks only one co
 
 *Source: [g4swe-ablation-full-20261031/SUMMARY.md](https://github.com/TechNaom/gemma4-agentic-swe/blob/main/experiments/g4swe-ablation-full-20261031/SUMMARY.md).*
 
-![Figure 1: resolve rate with 95% confidence intervals for k0, k4 and n4](figures/fig1-resolve-rates.png)
+![Figure 1: resolve rate with 95% confidence intervals for k0, k4 and n4](https://raw.githubusercontent.com/TechNaom/gemma4-agentic-swe/main/paper/figures/fig1-resolve-rates.png)
 
 *Figure 1. Resolve rate with 95% confidence intervals. The intervals overlap almost entirely, and the agent rarely used the graph tools it was given.*
 
@@ -188,7 +188,7 @@ tests accept.
 
 *Source: [faults-2026-10-23/README.md](https://github.com/TechNaom/gemma4-agentic-swe/blob/main/experiments/faults-2026-10-23/README.md); hand review in `escaped_review.md`.*
 
-![Figure 2: share of planted bugs the tests accepted, by mutation operator](figures/fig2-fault-escapes.png)
+![Figure 2: share of planted bugs the tests accepted, by mutation operator](https://raw.githubusercontent.com/TechNaom/gemma4-agentic-swe/main/paper/figures/fig2-fault-escapes.png)
 
 *Figure 2. Share of planted bugs the tests accepted, by mutation operator (before the hand review of equivalent mutants).*
 
