@@ -6,13 +6,15 @@ Before measuring agents, I measured the public benchmark. Here are the results, 
 
 I ran every public task through the official harness twice: once with its **reference (gold) patch**, which should pass, and once with an **empty patch**, which should fail. A task can separate a good agent from a bad one only if both hold.
 
-| Repo | Tasks | Gold passes | Empty passes | Valid |
-|---|---|---|---|---|
-| fastapi | 67 | 31 | 2 | 29 |
-| rich | 48 | 39 | 0 | 39 |
-| requests | 13 | 3 | 3 | 0 |
-| httpx | 1 | 0 | 0 | 0 |
-| **Total** | **129** | **73** | **5** | **68** |
+Valid tasks per repo (gold passes, empty fails):
+
+- **fastapi:** 29 of 67 valid (gold passes 31, empty passes 2)
+- **rich:** 39 of 48 valid (gold passes 39, empty passes 0)
+- **requests:** 0 of 13 valid (gold passes 3, empty passes 3)
+- **httpx:** 0 of 1 valid (gold fails)
+- **Total: 68 of 129 valid** (gold passes 73, empty passes 5)
+
+Why the other 61 fail:
 
 - **34 gold failures come from two test libraries missing from the provided wheels:** `inline_snapshot` (27 tasks) and `dirty_equals` (7 tasks).
 - 13 tasks fail even with the reference fix, 7 time out and 2 fail for other reasons.
@@ -33,11 +35,9 @@ So any resolve rate is an upper bound on truly correct fixes.
 
 Results on the 68 valid tasks, with `gemma-4-31b-it-qat-w4a16-ct` on 4x L4:
 
-| Agent | Tools | Resolved |
-|---|---|---|
-| k0 | 6 workspace tools only | **50%** (34/68) |
-| k4 | k0 + all three graph tools | 47% (32/68), McNemar p = 0.69 |
-| n4 | k4 + a prompt nudging graph-tool use | 44% (14/32) |
+- **k0, 6 workspace tools only: 50%** (34/68)
+- **k4, k0 + all three graph tools:** 47% (32/68), McNemar p = 0.69 vs k0
+- **n4, k4 + a prompt nudging graph-tool use:** 44% (14/32)
 
 The agent called a graph tool in fewer than 10% of runs unless told to. Nudging it raised usage but cost more tokens and delayed the first edit, without solving more tasks.
 
